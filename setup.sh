@@ -188,9 +188,11 @@ else
   skip "nvm init in .zshrc"
 fi
 header "Node.js (LTS)"
-if cmd_exists node; then
-  skip "node ($(node --version))"
-elif ! cmd_exists nvm && ! [[ -s "$NVM_DIR/nvm.sh" ]]; then
+# Use nvm directly (already sourced above) rather than cmd_exists — node may not
+# be in PATH yet if this is the first run or nvm was just sourced in this session.
+if nvm current 2>/dev/null | grep -qv "none\|N/A"; then
+  skip "node ($(node --version 2>/dev/null || nvm run --lts node --version 2>/dev/null))"
+elif ! [[ -s "$NVM_DIR/nvm.sh" ]]; then
   fail "node" "nvm not available — skipping"
 else
   if nvm install --lts &>/dev/null && nvm use --lts &>/dev/null && nvm alias default node &>/dev/null; then
@@ -200,12 +202,15 @@ else
   fi
 fi
 header "pm2"
-if cmd_exists pm2; then
+# Resolve npm via nvm's node path in case it's not in the shell's PATH yet
+NPM_BIN="$(nvm which current 2>/dev/null | xargs dirname 2>/dev/null)/npm"
+PM2_BIN="$(nvm which current 2>/dev/null | xargs dirname 2>/dev/null)/pm2"
+if [[ -x "$PM2_BIN" ]] || cmd_exists pm2; then
   skip "pm2"
-elif ! cmd_exists npm; then
+elif ! [[ -x "$NPM_BIN" ]] && ! cmd_exists npm; then
   fail "pm2" "npm not available — install node first"
-elif npm install -g pm2 &>/dev/null; then
-  ok "pm2 ($(pm2 --version 2>/dev/null))"
+elif "${NPM_BIN:-npm}" install -g pm2 &>/dev/null; then
+  ok "pm2 ($("$PM2_BIN" --version 2>/dev/null || pm2 --version 2>/dev/null))"
 else
   fail "pm2" "npm install -g failed"
 fi

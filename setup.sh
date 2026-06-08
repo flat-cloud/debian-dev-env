@@ -1,4 +1,3 @@
-cat > setup.sh << 'EOF'
 #!/bin/bash
 # =============================================================================
 # Dev Environment Setup Script — Debian
@@ -173,6 +172,21 @@ else
 fi
 # Source nvm for use in this script session
 [[ -s "$NVM_DIR/nvm.sh" ]] && source "$NVM_DIR/nvm.sh" 2>/dev/null || true
+
+# Ensure nvm init block is present in .zshrc (nvm installer only writes to .bashrc/.bash_profile)
+NVM_INIT_MARKER="# nvm init — added by setup.sh"
+if [[ -f "$ZSHRC" ]] && ! grep -q "$NVM_INIT_MARKER" "$ZSHRC" 2>/dev/null; then
+  cat >> "$ZSHRC" <<EOF
+
+$NVM_INIT_MARKER
+export NVM_DIR="\$HOME/.nvm"
+[ -s "\$NVM_DIR/nvm.sh" ] && source "\$NVM_DIR/nvm.sh"
+[ -s "\$NVM_DIR/bash_completion" ] && source "\$NVM_DIR/bash_completion"
+EOF
+  ok "nvm init added to .zshrc"
+else
+  skip "nvm init in .zshrc"
+fi
 header "Node.js (LTS)"
 if cmd_exists node; then
   skip "node ($(node --version))"
@@ -345,7 +359,3 @@ else
   echo -e "\n${YELLOW}Completed with ${#FAILED[@]} error(s). Re-run the script to retry failed steps.${RESET}"
 fi
 echo -e "${YELLOW}Restart your terminal (or run: exec zsh) to apply all changes.${RESET}\n"
-
-EOF
-
-

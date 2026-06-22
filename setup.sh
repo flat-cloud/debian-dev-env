@@ -17,10 +17,10 @@ RESET='\033[0m'
 PASSED=()
 FAILED=()
 SKIPPED=()
-ok()     { echo -e "${GREEN}  [OK] ${1}${RESET}";   PASSED+=("$1"); }
-fail()   { echo -e "${RED}  [FAIL] ${1}: ${2}${RESET}"; FAILED+=("$1 - $2"); }
-skip()   { echo -e "${YELLOW}  [SKIP] ${1} already installed${RESET}"; SKIPPED+=("$1"); }
-info()   { echo -e "${YELLOW}  -> ${1}${RESET}"; }
+ok() { echo -e "${GREEN}[OK]${RESET} ${1}"; PASSED+=("$1"); }
+fail() { echo -e "${RED}[FAIL]${RESET} ${1} - ${2}"; FAILED+=("$1 - $2"); }
+skip() { echo -e "${YELLOW}[SKIP]${RESET} ${1} already installed"; SKIPPED+=("$1"); }
+info() { echo -e "${YELLOW}[INFO]${RESET} ${1}"; }
 header() { echo -e "\n${CYAN}${BOLD}==> ${1}${RESET}"; }
 cmd_exists() { command -v "$1" &>/dev/null; }
 # == Sudo setup ================================================================

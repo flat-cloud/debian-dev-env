@@ -1,29 +1,29 @@
 #!/bin/bash
 # =============================================================================
-# Dev Environment Setup Script — Debian
+# Dev Environment Setup Script - Debian
 # Idempotent: safe to run multiple times
 # Graceful: continues on failure, reports summary at end
 # Installs: prerequisites, snapd, zsh, oh-my-zsh, nvm, node, pm2,
 #           postgresql, docker, docker-compose, php, python3, tailscale, firefox
 # =============================================================================
-# ── Colors ────────────────────────────────────────────────────────────────────
+# == Colors ====================================================================
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 RESET='\033[0m'
-# ── Tracking ──────────────────────────────────────────────────────────────────
+# == Tracking ==================================================================
 PASSED=()
 FAILED=()
 SKIPPED=()
-ok()     { echo -e "${GREEN}  ✔ ${1}${RESET}";       PASSED+=("$1"); }
-fail()   { echo -e "${RED}  ✘ ${1}: ${2}${RESET}";   FAILED+=("$1 — $2"); }
-skip()   { echo -e "${YELLOW}  ⊘ ${1} already installed${RESET}"; SKIPPED+=("$1"); }
-info()   { echo -e "${YELLOW}  ↳ ${1}${RESET}"; }
-header() { echo -e "\n${CYAN}${BOLD}▶ ${1}${RESET}"; }
+ok()     { echo -e "${GREEN}  [OK] ${1}${RESET}";   PASSED+=("$1"); }
+fail()   { echo -e "${RED}  [FAIL] ${1}: ${2}${RESET}"; FAILED+=("$1 - $2"); }
+skip()   { echo -e "${YELLOW}  [SKIP] ${1} already installed${RESET}"; SKIPPED+=("$1"); }
+info()   { echo -e "${YELLOW}  -> ${1}${RESET}"; }
+header() { echo -e "\n${CYAN}${BOLD}==> ${1}${RESET}"; }
 cmd_exists() { command -v "$1" &>/dev/null; }
-# ── Sudo setup ────────────────────────────────────────────────────────────────
+# == Sudo setup ================================================================
 if [[ $EUID -ne 0 ]] && ! sudo -n true 2>/dev/null; then
   echo -e "${BOLD}This script needs sudo. You may be prompted for your password.${RESET}"
   sudo -v || { echo -e "${RED}sudo access required. Exiting.${RESET}"; exit 1; }
@@ -31,7 +31,7 @@ fi
 ( while true; do sudo -n true; sleep 50; done ) 2>/dev/null &
 SUDO_PID=$!
 trap "kill $SUDO_PID 2>/dev/null" EXIT
-# ── apt helper (never exits on failure) ───────────────────────────────────────
+# == apt helper (never exits on failure) =======================================
 apt_install() {
   local pkg="$1" label="${2:-$1}"
   if dpkg -s "$pkg" &>/dev/null; then
@@ -49,7 +49,7 @@ header "Updating package lists"
 if sudo apt-get update -qq 2>/dev/null; then
   ok "apt update"
 else
-  fail "apt update" "could not refresh — some installs may fail"
+  fail "apt update" "could not refresh - some installs may fail"
 fi
 # =============================================================================
 # 2. PREREQUISITES
@@ -131,7 +131,7 @@ else
   fail "plugins in .zshrc" ".zshrc not found"
 fi
 # =============================================================================
-# 5. DEFAULT SHELL → ZSH
+# 5. DEFAULT SHELL -> ZSH
 # chsh is wrapped in a timeout to prevent hanging when PAM requires a
 # password interactively. Falls back to editing /etc/passwd directly.
 # =============================================================================
@@ -142,14 +142,14 @@ if [[ -z "$ZSH_PATH" ]]; then
 elif [[ "$SHELL" == "$ZSH_PATH" ]]; then
   skip "default shell (already zsh)"
 else
-  # Try chsh with a timeout — avoids hanging on PAM password prompts
+  # Try chsh with a timeout - avoids hanging on PAM password prompts
   if timeout 5 chsh -s "$ZSH_PATH" "$USER" 2>/dev/null; then
-    ok "default shell → zsh (via chsh)"
+    ok "default shell -> zsh (via chsh)"
   # Fall back to editing /etc/passwd directly
   elif sudo sed -i "s|^\($USER:.*:\)[^:]*$|\1$ZSH_PATH|" /etc/passwd 2>/dev/null; then
-    ok "default shell → zsh (via /etc/passwd)"
+    ok "default shell -> zsh (via /etc/passwd)"
   else
-    fail "default shell" "both chsh and /etc/passwd edit failed — run manually: chsh -s $ZSH_PATH"
+    fail "default shell" "both chsh and /etc/passwd edit failed - run manually: chsh -s $ZSH_PATH"
   fi
 fi
 # =============================================================================
@@ -174,7 +174,7 @@ fi
 [[ -s "$NVM_DIR/nvm.sh" ]] && source "$NVM_DIR/nvm.sh" 2>/dev/null || true
 
 # Ensure nvm init block is present in .zshrc (nvm installer only writes to .bashrc/.bash_profile)
-NVM_INIT_MARKER="# nvm init — added by setup.sh"
+NVM_INIT_MARKER="# nvm init - added by setup.sh"
 if [[ -f "$ZSHRC" ]] && ! grep -q "$NVM_INIT_MARKER" "$ZSHRC" 2>/dev/null; then
   cat >> "$ZSHRC" <<EOF
 
@@ -188,12 +188,12 @@ else
   skip "nvm init in .zshrc"
 fi
 header "Node.js (LTS)"
-# Use nvm directly (already sourced above) rather than cmd_exists — node may not
+# Use nvm directly (already sourced above) rather than cmd_exists - node may not
 # be in PATH yet if this is the first run or nvm was just sourced in this session.
 if nvm current 2>/dev/null | grep -qv "none\|N/A"; then
   skip "node ($(node --version 2>/dev/null || nvm run --lts node --version 2>/dev/null))"
 elif ! [[ -s "$NVM_DIR/nvm.sh" ]]; then
-  fail "node" "nvm not available — skipping"
+  fail "node" "nvm not available - skipping"
 else
   if nvm install --lts &>/dev/null && nvm use --lts &>/dev/null && nvm alias default node &>/dev/null; then
     ok "node ($(node --version))"
@@ -208,7 +208,7 @@ PM2_BIN="$(nvm which current 2>/dev/null | xargs dirname 2>/dev/null)/pm2"
 if [[ -x "$PM2_BIN" ]] || cmd_exists pm2; then
   skip "pm2"
 elif ! [[ -x "$NPM_BIN" ]] && ! cmd_exists npm; then
-  fail "pm2" "npm not available — install node first"
+  fail "pm2" "npm not available - install node first"
 elif "${NPM_BIN:-npm}" install -g pm2 &>/dev/null; then
   ok "pm2 ($("$PM2_BIN" --version 2>/dev/null || pm2 --version 2>/dev/null))"
 else
@@ -265,7 +265,7 @@ else
   fi
 fi
 # =============================================================================
-# 9. PHP (via sury.org — latest for Debian)
+# 9. PHP (via sury.org - latest for Debian)
 # =============================================================================
 header "PHP"
 if cmd_exists php; then
@@ -342,22 +342,22 @@ fi
 # =============================================================================
 # SUMMARY
 # =============================================================================
-echo -e "\n${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "\n${BOLD}==================================================${RESET}"
 echo -e "${BOLD}  Setup Summary${RESET}"
-echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${BOLD}==================================================${RESET}"
 if [[ ${#PASSED[@]} -gt 0 ]]; then
   echo -e "\n${GREEN}${BOLD}Installed (${#PASSED[@]})${RESET}"
-  for item in "${PASSED[@]}"; do echo -e "  ${GREEN}✔ $item${RESET}"; done
+  for item in "${PASSED[@]}"; do echo -e "  ${GREEN}[OK] $item${RESET}"; done
 fi
 if [[ ${#SKIPPED[@]} -gt 0 ]]; then
   echo -e "\n${YELLOW}${BOLD}Already present (${#SKIPPED[@]})${RESET}"
-  for item in "${SKIPPED[@]}"; do echo -e "  ${YELLOW}⊘ $item${RESET}"; done
+  for item in "${SKIPPED[@]}"; do echo -e "  ${YELLOW}[SKIP] $item${RESET}"; done
 fi
 if [[ ${#FAILED[@]} -gt 0 ]]; then
   echo -e "\n${RED}${BOLD}Failed (${#FAILED[@]})${RESET}"
-  for item in "${FAILED[@]}"; do echo -e "  ${RED}✘ $item${RESET}"; done
+  for item in "${FAILED[@]}"; do echo -e "  ${RED}[FAIL] $item${RESET}"; done
 fi
-echo -e "\n${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "\n${BOLD}==================================================${RESET}"
 if [[ ${#FAILED[@]} -eq 0 ]]; then
   echo -e "\n${GREEN}${BOLD}All done!${RESET}"
 else

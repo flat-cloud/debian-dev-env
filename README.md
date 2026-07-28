@@ -37,3 +37,17 @@ cd ~/cloudshell-env
 
 3. **Silent Shell Handoff (`.bashrc`)**:
    - Cloud Shell defaults to launch `bash` on login. `install.sh` configures `~/.bashrc` to silently `exec zsh -l` whenever an interactive TTY session starts, seamlessly transitioning you into Zsh with Powerlevel10k.
+
+
+---
+
+## 💾 Saving Disk Space: `nodetmp` Utility
+
+To prevent `node_modules` from consuming your persistent **5 GB `$HOME` disk quota**, this environment includes **`nodetmp`** — a tool that offloads `node_modules` to `/tmp` via symlinks.
+
+### Usage:
+- `nodetmp link` (or `nmlink`): Offloads `node_modules` in `$PWD` to `/tmp/node_modules_store/<project_hash>`.
+- `nodetmp install` (or `npmi`): Creates the `/tmp` symlink if missing, then runs `npm install`.
+- `nodetmp status` (or `nmstatus`): Displays whether `node_modules` is linked and how much disk space is saved.
+- `nodetmp fix` (or `nmfix`): Scans for broken symlinks after container reboots and restores `/tmp` target directories automatically.
+- `nodetmp scan [path]`: Scans all projects in `$HOME` to audit `node_modules` locations & disk usage.

@@ -31,3 +31,16 @@ alias dev='agy'
 
 # Load Powerlevel10k theme configuration if present
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+
+# nodetmp: Offload node_modules to /tmp to save $HOME quota
+export PATH="$HOME/.local/bin:$PATH"
+alias npmi="nodetmp install"
+alias nmlink="nodetmp link"
+alias nmstatus="nodetmp status"
+alias nmfix="nodetmp fix"
+
+# Auto-repair broken node_modules symlinks on container reboot
+if [ -t 1 ] && command -v nodetmp >/dev/null 2>&1; then
+    (nodetmp fix "$HOME" >/dev/null 2>&1 &)
+fi

@@ -101,3 +101,12 @@ EOF
 fi
 
 echo "✅ Environment setup complete! Restart your shell or run 'zsh' to activate."
+
+
+# 1c. Install nodetmp CLI tool
+echo "🔗 Installing nodetmp CLI utility..."
+mkdir -p "$HOME_DIR/.local/bin"
+if [ -f "$SCRIPT_DIR/bin/nodetmp" ]; then
+    cp "$SCRIPT_DIR/bin/nodetmp" "$HOME_DIR/.local/bin/nodetmp"
+    chmod +x "$HOME_DIR/.local/bin/nodetmp"
+fi

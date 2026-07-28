@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# nodetmp - Offload node_modules to /tmp via symlinks to conserve $HOME quota
+# ==============================================================================
+
+set -e
+
+show_help() {
+    cat << 'EOF'
+Usage: nodetmp [command] [options]
+
+Commands:
+  link (default)    Symlink node_modules in current directory to /tmp
+  install, i        Ensure /tmp symlink exists, then run `npm install`
+  status, s         Check node_modules status & disk usage for current project
+  scan [path]       Scan a directory (default: current dir or $HOME) for node_modules
+  fix, repair       Re-create missing /tmp targets for broken node_modules symlinks
+  clean             Remove /tmp store and node_modules symlink for current project
+  help              Display this help message
+
+Aliases:
+  npmi     -> nodetmp install
+  nmlink   -> nodetmp link
+  nmstatus -> nodetmp status
+EOF
+}
+
+CMD="${1:-link}"
+if [ $# -gt 0 ]; then
+    shift
+fi
+
+get_project_tmp_store() {
+    local proj_path="$1"
+    local proj_name
+    proj_name="$(basename "$proj_path")"
+    local proj_hash
+    proj_hash="$(echo -n "$proj_path" | md5sum | cut -d" " -f1 | cut -c1-8)"
+    echo "/tmp/node_modules_store/${proj_name}_${proj_hash}"
+}
+
+do_link() {
+    local target_dir="${1:-$PWD}"
+    cd "$target_dir"
+
+    local proj_name
+    proj_name="$(basename "$PWD")"
+    local tmp_store
+    tmp_store="$(get_project_tmp_store "$PWD")"
+
+    echo "🔗 Setting up node_modules symlink for '$proj_name'..."
+    mkdir -p "$tmp_store"
+
+    if [ -d "node_modules" ] && [ ! -L "node_modules" ]; then
+        echo "📦 Offloading existing node_modules to $tmp_store..."
+        cp -r node_modules/* "$tmp_store/" 2>/dev/null || true
+        rm -rf node_modules
+    fi
+
+    if [ -L "node_modules" ]; then
+        rm -f node_modules
+    fi
+
+    ln -s "$tmp_store" node_modules
+    echo "✅ Linked: $PWD/node_modules -> $tmp_store"
+}
+
+do_install() {
+    do_link "$PWD"
+    local tmp_store
+    tmp_store="$(get_project_tmp_store "$PWD")"
+    echo "📥 Running npm install in $tmp_store..."
+    npm install "$@"
+}
+
+do_status() {
+    if [ -L "node_modules" ]; then
+        local link_target
+        link_target="$(readlink "node_modules")"
+        if [ -d "$link_target" ]; then
+            local size
+            size="$(du -sh "$link_target" 2>/dev/null | cut -f1)"
+            echo "✅ node_modules is symlinked to $link_target"
+            echo "   💾 Saved $HOME disk space: $size"
+        else
+            echo "⚠️  node_modules symlink is BROKEN (target $link_target missing)."
+            echo "👉 Run 'nodetmp fix' or 'nodetmp install' to restore."
+        fi
+    elif [ -d "node_modules" ]; then
+        local size
+        size="$(du -sh node_modules 2>/dev/null | cut -f1)"
+        echo "ℹ️  node_modules is a REAL directory taking up $size on $HOME."
+        echo "👉 Run 'nodetmp link' to move it to /tmp and free up space."
+    else
+        echo "❌ No node_modules found in current directory ($PWD)."
+    fi
+}
+
+do_fix() {
+    echo "🛠️  Scanning for broken node_modules symlinks..."
+    local search_dir="${1:-$HOME}"
+    local count=0
+
+    while IFS= read -r link_path; do
+        if [ -L "$link_path" ] && [ ! -e "$link_path" ]; then
+            local target
+            target="$(readlink "$link_path")"
+            local proj_dir
+            proj_dir="$(dirname "$link_path")"
+            echo "🔧 Fixing broken link at $link_path (creating $target)..."
+            mkdir -p "$target"
+            if [ -f "$proj_dir/package.json" ]; then
+                echo "📥 Running npm install in $proj_dir..."
+                (cd "$proj_dir" && npm install)
+            fi
+            count=$((count + 1))
+        fi
+    done < <(find "$search_dir" -maxdepth 5 -name "node_modules" -type l 2>/dev/null || true)
+
+    if [ "$count" -eq 0 ]; then
+        echo "✅ No broken node_modules symlinks found."
+    else
+        echo "🎉 Restored $count node_modules stores in /tmp!"
+    fi
+}
+
+do_scan() {
+    local search_dir="${1:-$HOME}"
+    echo "🔍 Scanning '$search_dir' for node_modules..."
+    echo "--------------------------------------------------------------------------------"
+
+    find "$search_dir" -maxdepth 5 -name "node_modules" 2>/dev/null | while read -r nm_path; do
+        if [ -L "$nm_path" ]; then
+            local target
+            target="$(readlink "$nm_path")"
+            if [ -d "$target" ]; then
+                local sz
+                sz="$(du -sh "$target" 2>/dev/null | cut -f1)"
+                echo " [SYMLINK] $nm_path -> $target ($sz in /tmp)"
+            else
+                echo " [BROKEN]  $nm_path -> $target (Target missing)"
+            fi
+        else
+            local sz
+            sz="$(du -sh "$nm_path" 2>/dev/null | cut -f1)"
+            echo " [REAL]     $nm_path ($sz on $HOME)"
+        fi
+    done
+    echo "--------------------------------------------------------------------------------"
+}
+
+do_clean() {
+    local tmp_store
+    tmp_store="$(get_project_tmp_store "$PWD")"
+    if [ -d "$tmp_store" ]; then
+        rm -rf "$tmp_store"
+        echo "🧹 Removed /tmp store: $tmp_store"
+    fi
+    if [ -L "node_modules" ]; then
+        rm -f node_modules
+        echo "🧹 Removed node_modules symlink"
+    fi
+}
+
+case "$CMD" in
+    link)      do_link "$@" ;;
+    install|i) do_install "$@" ;;
+    status|s)  do_status "$@" ;;
+    scan)      do_scan "$@" ;;
+    fix|repair) do_fix "$@" ;;
+    clean)     do_clean "$@" ;;
+    help|--help|-h) show_help ;;
+    *)
+        echo "Unknown command: $CMD"
+        show_help
+        exit 1
+        ;;
+esac

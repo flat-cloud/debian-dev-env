@@ -23,8 +23,13 @@ fi
 if command -v sudo >/dev/null 2>&1; then
     echo "⚡ Installing system packages immediately (zsh, jq, htop, fzf, ripgrep, tree)..."
     sudo apt-get update -q -y || true
-    sudo apt-get install -q -y zsh jq htop fzf ripgrep tree || true
+    sudo apt-get install -q -y zsh jq htop fzf ripgrep tree python3-pip python3-venv || true
 fi
+
+# 1b. Python CLI Tools Setup
+echo "🐍 Installing Python CLI tools (uv, pipx, glances, rich-cli, httpie, llm, ruff, tldr, copier)..."
+python3 -m pip install --user --break-system-packages uv pipx glances rich-cli httpie llm ruff tldr copier 2>/dev/null || python3 -m pip install --user uv pipx glances rich-cli httpie llm ruff tldr copier || true
+
 
 # 2. Oh My Zsh Installation
 OMZ_DIR="$HOME_DIR/.oh-my-zsh"

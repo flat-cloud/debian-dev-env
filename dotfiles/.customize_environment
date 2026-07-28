@@ -3,7 +3,20 @@
 # Executed automatically as root in the background upon container startup.
 
 export DEBIAN_FRONTEND=noninteractive
-mkdir -p $HOME/.cloudshell && touch $HOME/.cloudshell/no-apt-get-warning
+mkdir -p "$HOME/.cloudshell" && touch "$HOME/.cloudshell/no-apt-get-warning"
 
 # Update apt repositories and install required system tools
-apt-get update -q -y && apt-get install -q -y     zsh     jq     htop     fzf     ripgrep     tree
+apt-get update -q -y && apt-get install -q -y \
+    zsh \
+    jq \
+    htop \
+    fzf \
+    ripgrep \
+    tree \
+    python3-pip \
+    python3-venv
+
+# Install Python CLI tools for the user
+if [ -n "$SUDO_USER" ]; then
+    su - "$SUDO_USER" -c "python3 -m pip install --user --break-system-packages uv pipx glances rich-cli httpie llm ruff tldr copier" || true
+fi

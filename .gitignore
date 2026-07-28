@@ -1,0 +1,17 @@
+# Logs & temporary files
+*.log
+*.tmp
+*.swp
+.DS_Store
+
+# Secrets & credentials
+*.key
+*.pem
+*.pub
+.env*
+id_rsa*
+id_ed25519*
+
+# Cache & local state
+.cache/
+.cloudshell/

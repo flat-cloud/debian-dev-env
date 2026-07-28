@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+set -e
+
+# Cloud Shell Environment Bootstrap Script
+# Restores zsh, Oh My Zsh, Powerlevel10k, plugins, and custom dotfiles.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HOME_DIR="$HOME"
+
+# Suppress Cloud Shell apt-get notice
+mkdir -p "$HOME_DIR/.cloudshell" && touch "$HOME_DIR/.cloudshell/no-apt-get-warning"
+
+echo "🚀 Starting Cloud Shell environment setup..."
+
+# 1. System Package Setup via .customize_environment
+echo "📦 Setting up ~/.customize_environment for system packages..."
+if [ -f "$SCRIPT_DIR/dotfiles/.customize_environment" ]; then
+    cp "$SCRIPT_DIR/dotfiles/.customize_environment" "$HOME_DIR/.customize_environment"
+    chmod +x "$HOME_DIR/.customize_environment"
+fi
+
+# If running as root or sudo is available, install required packages immediately
+if command -v sudo >/dev/null 2>&1; then
+    echo "⚡ Installing system packages immediately (zsh, jq, htop, fzf, ripgrep, tree)..."
+    sudo apt-get update -q -y || true
+    sudo apt-get install -q -y zsh jq htop fzf ripgrep tree || true
+fi
+
+# 2. Oh My Zsh Installation
+OMZ_DIR="$HOME_DIR/.oh-my-zsh"
+if [ ! -d "$OMZ_DIR" ]; then
+    echo "✨ Cloning Oh My Zsh..."
+    git clone https://github.com/ohmyzsh/ohmyzsh.git "$OMZ_DIR" || true
+else
+    echo "🔄 Updating Oh My Zsh..."
+    (cd "$OMZ_DIR" && git pull --quiet || true)
+fi
+
+# 3. Custom Themes & Plugins
+CUSTOM_DIR="${ZSH_CUSTOM:-$OMZ_DIR/custom}"
+
+# Powerlevel10k Theme
+P10K_DIR="$CUSTOM_DIR/themes/powerlevel10k"
+if [ ! -d "$P10K_DIR" ]; then
+    echo "🎨 Cloning Powerlevel10k theme..."
+    git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$P10K_DIR" || true
+else
+    echo "🔄 Updating Powerlevel10k theme..."
+    (cd "$P10K_DIR" && git pull --quiet || true)
+fi
+
+# zsh-autosuggestions Plugin
+AUTOSUGGEST_DIR="$CUSTOM_DIR/plugins/zsh-autosuggestions"
+if [ ! -d "$AUTOSUGGEST_DIR" ]; then
+    echo "🔌 Cloning zsh-autosuggestions plugin..."
+    git clone https://github.com/zsh-users/zsh-autosuggestions.git "$AUTOSUGGEST_DIR" || true
+else
+    echo "🔄 Updating zsh-autosuggestions plugin..."
+    (cd "$AUTOSUGGEST_DIR" && git pull --quiet || true)
+fi
+
+# zsh-syntax-highlighting Plugin
+SYNTAX_DIR="$CUSTOM_DIR/plugins/zsh-syntax-highlighting"
+if [ ! -d "$SYNTAX_DIR" ]; then
+    echo "🔌 Cloning zsh-syntax-highlighting plugin..."
+    git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$SYNTAX_DIR" || true
+else
+    echo "🔄 Updating zsh-syntax-highlighting plugin..."
+    (cd "$SYNTAX_DIR" && git pull --quiet || true)
+fi
+
+# 4. Copy/Link Dotfiles to $HOME
+echo "📄 Deploying dotfiles to $HOME_DIR..."
+for df in .zshrc .p10k.zsh .hushlogin; do
+    if [ -f "$SCRIPT_DIR/dotfiles/$df" ]; then
+        cp "$SCRIPT_DIR/dotfiles/$df" "$HOME_DIR/$df"
+        echo "   -> Updated $df"
+    fi
+done
+
+# 5. Hand off ~/.bashrc to zsh for interactive shells
+BASHRC="$HOME_DIR/.bashrc"
+HANDOFF_COMMENT="# Auto-handoff interactive sessions to zsh"
+if [ -f "$BASHRC" ]; then
+    if ! grep -q "$HANDOFF_COMMENT" "$BASHRC"; then
+        echo "🐚 Adding zsh handoff to ~/.bashrc..."
+        cat << 'EOF' >> "$BASHRC"
+
+# Auto-handoff interactive sessions to zsh
+if [ -t 1 ] && [ -x "$(command -v zsh)" ] && [ -z "$ZSH_VERSION" ]; then
+    export SHELL="$(command -v zsh)"
+    exec zsh -l
+fi
+EOF
+    fi
+fi
+
+echo "✅ Environment setup complete! Restart your shell or run 'zsh' to activate."

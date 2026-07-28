@@ -8,6 +8,7 @@ This repository locks in and automates the restoration of a personalized Linux/C
 - **Plugins**: `git`, `zsh-autosuggestions`, `zsh-syntax-highlighting`
 - **CLI Tools**: `jq`, `htop`, `fzf`, `ripgrep`, `tree`, `tmux`, `gh` (GitHub CLI)
 - **Database**: `postgresql` (PostgreSQL 16 service & `psql` client)
+- **Web Server**: `nginx` (Reverse proxy & web server)
 - **Python CLI Tools**: `uv`, `pipx`, `glances`, `rich-cli`, `httpie`, `llm`, `ruff`, `tldr`, `copier`
 - **Environment**: GCP Vertex AI variables (`GOOGLE_GENAI_USE_VERTEXAI`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`)
 - **Aliases**: `dev` -> `agy` (Antigravity Agent)

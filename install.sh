@@ -132,3 +132,9 @@ if command -v service >/dev/null 2>&1; then
     sudo -u postgres psql -c "CREATE USER postgres WITH SUPERUSER PASSWORD 'postgres';" 2>/dev/null || true
     sudo -u postgres createdb dev 2>/dev/null || true
 fi
+
+# 1f. Nginx Service Setup
+echo "🌐 Starting Nginx web server..."
+if command -v service >/dev/null 2>&1; then
+    sudo service nginx start || true
+fi

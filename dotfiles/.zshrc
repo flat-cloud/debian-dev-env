@@ -60,3 +60,10 @@ alias tm='tmux attach -t dev || tmux new -s dev'
 alias pgstart="sudo service postgresql start"
 alias pgstatus="sudo service postgresql status"
 alias psqldev="sudo -u postgres psql -d dev"
+
+# Nginx Aliases
+alias ngstart="sudo service nginx start"
+alias ngstop="sudo service nginx stop"
+alias ngreload="sudo service nginx reload"
+alias ngstatus="sudo service nginx status"
+alias ngconf="sudo nano /etc/nginx/sites-available/default"

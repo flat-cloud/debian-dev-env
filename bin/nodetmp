@@ -1,27 +1,29 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# nodetmp - Offload node_modules to /tmp via symlinks to conserve $HOME quota
+# nodetmp / tmpstore - Offload node_modules & Python .venv to /tmp to save $HOME
 # ==============================================================================
 
 set -e
 
 show_help() {
-    cat << 'EOF'
+    cat << EOF
 Usage: nodetmp [command] [options]
 
 Commands:
-  link (default)    Symlink node_modules in current directory to /tmp
-  install, i        Ensure /tmp symlink exists, then run `npm install`
-  status, s         Check node_modules status & disk usage for current project
-  scan [path]       Scan a directory (default: current dir or $HOME) for node_modules
-  fix, repair       Re-create missing /tmp targets for broken node_modules symlinks
-  clean             Remove /tmp store and node_modules symlink for current project
+  link (default)    Symlink node_modules and .venv in current directory to /tmp
+  install, i        Ensure /tmp symlinks exist, then run `npm install`
+  venv              Ensure /tmp .venv exists, then create/activate virtualenv
+  status, s         Check node_modules & .venv status & disk usage for current project
+  scan [path]       Scan directory for offloaded node_modules & .venv folders
+  fix, repair       Re-create missing /tmp targets for broken symlinks
+  clean             Remove /tmp store and symlinks for current project
   help              Display this help message
 
 Aliases:
   npmi     -> nodetmp install
   nmlink   -> nodetmp link
   nmstatus -> nodetmp status
+  pyvenv   -> nodetmp venv
 EOF
 }
 
@@ -36,7 +38,7 @@ get_project_tmp_store() {
     proj_name="$(basename "$proj_path")"
     local proj_hash
     proj_hash="$(echo -n "$proj_path" | md5sum | cut -d" " -f1 | cut -c1-8)"
-    echo "/tmp/node_modules_store/${proj_name}_${proj_hash}"
+    echo "/tmp/dev_tmp_store/${proj_name}_${proj_hash}"
 }
 
 do_link() {
@@ -48,56 +50,100 @@ do_link() {
     local tmp_store
     tmp_store="$(get_project_tmp_store "$PWD")"
 
-    echo "🔗 Setting up node_modules symlink for '$proj_name'..."
-    mkdir -p "$tmp_store"
+    echo "🔗 Offloading project targets for  to /tmp..."
+    mkdir -p "$tmp_store/node_modules" "$tmp_store/.venv"
 
-    if [ -d "node_modules" ] && [ ! -L "node_modules" ]; then
-        echo "📦 Offloading existing node_modules to $tmp_store..."
-        cp -r node_modules/* "$tmp_store/" 2>/dev/null || true
-        rm -rf node_modules
+    # Node.js node_modules
+    if [ -f "package.json" ] || [ -d "node_modules" ]; then
+        if [ -d "node_modules" ] && [ ! -L "node_modules" ]; then
+            echo "📦 Moving existing node_modules to $tmp_store/node_modules..."
+            cp -r node_modules/* "$tmp_store/node_modules/" 2>/dev/null || true
+            rm -rf node_modules
+        fi
+        if [ -L "node_modules" ]; then
+            rm -f node_modules
+        fi
+        ln -s "$tmp_store/node_modules" node_modules
+        echo "✅ Linked: $PWD/node_modules -> $tmp_store/node_modules"
     fi
 
-    if [ -L "node_modules" ]; then
-        rm -f node_modules
+    # Python .venv
+    if [ -f "requirements.txt" ] || [ -f "pyproject.toml" ] || [ -d ".venv" ]; then
+        if [ -d ".venv" ] && [ ! -L ".venv" ]; then
+            echo "🐍 Moving existing .venv to $tmp_store/.venv..."
+            cp -r .venv/* "$tmp_store/.venv/" 2>/dev/null || true
+            rm -rf .venv
+        fi
+        if [ -L ".venv" ]; then
+            rm -f .venv
+        fi
+        ln -s "$tmp_store/.venv" .venv
+        echo "✅ Linked: $PWD/.venv -> $tmp_store/.venv"
     fi
-
-    ln -s "$tmp_store" node_modules
-    echo "✅ Linked: $PWD/node_modules -> $tmp_store"
 }
 
 do_install() {
     do_link "$PWD"
+    if [ -f "package.json" ]; then
+        echo "📥 Running npm install..."
+        npm install "$@"
+    fi
+}
+
+do_venv() {
+    do_link "$PWD"
     local tmp_store
     tmp_store="$(get_project_tmp_store "$PWD")"
-    echo "📥 Running npm install in $tmp_store..."
-    npm install "$@"
+    if [ ! -f "$tmp_store/.venv/bin/activate" ]; then
+        echo "🐍 Creating Python virtualenv in $tmp_store/.venv..."
+        python3 -m venv "$tmp_store/.venv"
+    fi
+    echo "✅ Python .venv ready at $PWD/.venv"
+    echo "👉 Activate with: source .venv/bin/activate"
 }
 
 do_status() {
+    echo "📊 Status for jkru23ger:"
+    local tmp_store
+    tmp_store="$(get_project_tmp_store "$PWD")"
+
+    # node_modules check
     if [ -L "node_modules" ]; then
         local link_target
         link_target="$(readlink "node_modules")"
         if [ -d "$link_target" ]; then
             local size
             size="$(du -sh "$link_target" 2>/dev/null | cut -f1)"
-            echo "✅ node_modules is symlinked to $link_target"
-            echo "   💾 Saved $HOME disk space: $size"
+            echo "  [node_modules] Symlinked -> $link_target ($size in /tmp)"
         else
-            echo "⚠️  node_modules symlink is BROKEN (target $link_target missing)."
-            echo "👉 Run 'nodetmp fix' or 'nodetmp install' to restore."
+            echo "  [node_modules] ⚠️ BROKEN symlink -> $link_target"
         fi
     elif [ -d "node_modules" ]; then
         local size
         size="$(du -sh node_modules 2>/dev/null | cut -f1)"
-        echo "ℹ️  node_modules is a REAL directory taking up $size on $HOME."
-        echo "👉 Run 'nodetmp link' to move it to /tmp and free up space."
-    else
-        echo "❌ No node_modules found in current directory ($PWD)."
+        echo "  [node_modules] REAL directory ($size on $HOME)"
+    fi
+
+    # .venv check
+    if [ -L ".venv" ]; then
+        local link_target
+        link_target="$(readlink ".venv")"
+        if [ -d "$link_target" ]; then
+            local size
+            size="$(du -sh "$link_target" 2>/dev/null | cut -f1)"
+            echo "  [.venv]        Symlinked -> $link_target ($size in /tmp)"
+        else
+            echo "  [.venv]        ⚠️ BROKEN symlink -> $link_target"
+        fi
+    elif [ -d ".venv" ]; then
+        local size
+        size="$(du -sh .venv 2>/dev/null | cut -f1)"
+        echo "  [.venv]        REAL directory ($size on $HOME)"
     fi
 }
 
 do_fix() {
-    echo "🛠️  Scanning for broken node_modules symlinks..."
+    echo "🛠️  Scanning for broken /tmp symlinks in $HOME..."
     local search_dir="${1:-$HOME}"
     local count=0
 
@@ -107,43 +153,47 @@ do_fix() {
             target="$(readlink "$link_path")"
             local proj_dir
             proj_dir="$(dirname "$link_path")"
-            echo "🔧 Fixing broken link at $link_path (creating $target)..."
+            echo "🔧 Restoring target dir for broken link: $link_path -> $target"
             mkdir -p "$target"
-            if [ -f "$proj_dir/package.json" ]; then
+            
+            if [ "$(basename "$link_path")" = "node_modules" ] && [ -f "$proj_dir/package.json" ]; then
                 echo "📥 Running npm install in $proj_dir..."
-                (cd "$proj_dir" && npm install)
+                (cd "$proj_dir" && npm install || true)
+            elif [ "$(basename "$link_path")" = ".venv" ] && [ -f "$proj_dir/requirements.txt" ]; then
+                echo "🐍 Re-creating Python venv in $proj_dir..."
+                python3 -m venv "$target"
+                (cd "$proj_dir" && "$target/bin/pip" install -r requirements.txt || true)
             fi
             count=$((count + 1))
         fi
-    done < <(find "$search_dir" -maxdepth 5 -name "node_modules" -type l 2>/dev/null || true)
+    done < <(find "$search_dir" -maxdepth 5 \( -name "node_modules" -o -name ".venv" \) -type l 2>/dev/null || true)
 
     if [ "$count" -eq 0 ]; then
-        echo "✅ No broken node_modules symlinks found."
+        echo "✅ No broken symlinks found."
     else
-        echo "🎉 Restored $count node_modules stores in /tmp!"
+        echo "🎉 Restored $count project targets in /tmp!"
     fi
 }
 
 do_scan() {
     local search_dir="${1:-$HOME}"
-    echo "🔍 Scanning '$search_dir' for node_modules..."
+    echo "🔍 Scanning  for offloaded targets..."
     echo "--------------------------------------------------------------------------------"
-
-    find "$search_dir" -maxdepth 5 -name "node_modules" 2>/dev/null | while read -r nm_path; do
-        if [ -L "$nm_path" ]; then
+    find "$search_dir" -maxdepth 5 \( -name "node_modules" -o -name ".venv" \) 2>/dev/null | while read -r target_path; do
+        if [ -L "$target_path" ]; then
             local target
-            target="$(readlink "$nm_path")"
+            target="$(readlink "$target_path")"
             if [ -d "$target" ]; then
                 local sz
                 sz="$(du -sh "$target" 2>/dev/null | cut -f1)"
-                echo " [SYMLINK] $nm_path -> $target ($sz in /tmp)"
+                echo " [SYMLINK] $target_path -> $target ($sz in /tmp)"
             else
-                echo " [BROKEN]  $nm_path -> $target (Target missing)"
+                echo " [BROKEN]  $target_path -> $target (Missing)"
             fi
         else
             local sz
-            sz="$(du -sh "$nm_path" 2>/dev/null | cut -f1)"
-            echo " [REAL]     $nm_path ($sz on $HOME)"
+            sz="$(du -sh "$target_path" 2>/dev/null | cut -f1)"
+            echo " [REAL]     $target_path ($sz on $HOME)"
         fi
     done
     echo "--------------------------------------------------------------------------------"
@@ -156,19 +206,22 @@ do_clean() {
         rm -rf "$tmp_store"
         echo "🧹 Removed /tmp store: $tmp_store"
     fi
-    if [ -L "node_modules" ]; then
-        rm -f node_modules
-        echo "🧹 Removed node_modules symlink"
-    fi
+    for target in node_modules .venv; do
+        if [ -L "$target" ]; then
+            rm -f "$target"
+            echo "🧹 Removed $target symlink"
+        fi
+    done
 }
 
 case "$CMD" in
-    link)      do_link "$@" ;;
-    install|i) do_install "$@" ;;
-    status|s)  do_status "$@" ;;
-    scan)      do_scan "$@" ;;
+    link)       do_link "$@" ;;
+    install|i)  do_install "$@" ;;
+    venv)       do_venv "$@" ;;
+    status|s)   do_status "$@" ;;
+    scan)       do_scan "$@" ;;
     fix|repair) do_fix "$@" ;;
-    clean)     do_clean "$@" ;;
+    clean)      do_clean "$@" ;;
     help|--help|-h) show_help ;;
     *)
         echo "Unknown command: $CMD"

@@ -44,3 +44,12 @@ alias nmfix="nodetmp fix"
 if [ -t 1 ] && command -v nodetmp >/dev/null 2>&1; then
     (nodetmp fix "$HOME" >/dev/null 2>&1 &)
 fi
+
+
+# Global Package Caches -> /tmp (keeps $HOME disk clean)
+export PIP_CACHE_DIR="/tmp/.cache/pip"
+export UV_CACHE_DIR="/tmp/.cache/uv"
+export NPM_CONFIG_CACHE="/tmp/.cache/npm"
+export YARN_CACHE_FOLDER="/tmp/.cache/yarn"
+
+alias pyvenv="nodetmp venv"

@@ -23,7 +23,7 @@ fi
 if command -v sudo >/dev/null 2>&1; then
     echo "⚡ Installing system packages immediately (zsh, jq, htop, fzf, ripgrep, tree)..."
     sudo apt-get update -q -y || true
-    sudo apt-get install -q -y zsh jq htop fzf ripgrep tree python3-pip python3-venv || true
+    sudo apt-get install -q -y zsh jq htop fzf ripgrep tree python3-pip python3-venv tmux || true
 fi
 
 # 1b. Python CLI Tools Setup
@@ -76,7 +76,7 @@ fi
 
 # 4. Copy/Link Dotfiles to $HOME
 echo "📄 Deploying dotfiles to $HOME_DIR..."
-for df in .zshrc .p10k.zsh .hushlogin; do
+for df in .zshrc .p10k.zsh .hushlogin .tmux.conf; do
     if [ -f "$SCRIPT_DIR/dotfiles/$df" ]; then
         cp "$SCRIPT_DIR/dotfiles/$df" "$HOME_DIR/$df"
         echo "   -> Updated $df"

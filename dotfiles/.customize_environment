@@ -14,7 +14,8 @@ apt-get update -q -y && apt-get install -q -y \
     ripgrep \
     tree \
     python3-pip \
-    python3-venv
+    python3-venv \
+    tmux
 
 # Install Python CLI tools for the user
 if [ -n "$SUDO_USER" ]; then

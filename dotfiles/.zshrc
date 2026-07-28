@@ -53,3 +53,5 @@ export NPM_CONFIG_CACHE="/tmp/.cache/npm"
 export YARN_CACHE_FOLDER="/tmp/.cache/yarn"
 
 alias pyvenv="nodetmp venv"
+
+alias tm='tmux attach -t dev || tmux new -s dev'

@@ -138,3 +138,9 @@ echo "🌐 Starting Nginx web server..."
 if command -v service >/dev/null 2>&1; then
     sudo service nginx start || true
 fi
+
+# 1g. tokless Token Optimization Suite for Antigravity (agy)
+echo "⚡ Installing tokless token-saving suite for Antigravity..."
+if command -v curl >/dev/null 2>&1; then
+    curl -fsSL https://raw.githubusercontent.com/HoangP8/tokless/main/scripts/install.sh | bash -s -- --agents antigravity || true
+fi

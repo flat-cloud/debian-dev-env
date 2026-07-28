@@ -6,7 +6,7 @@ This repository locks in and automates the restoration of a personalized Linux/C
 - **Shell**: Zsh + Oh My Zsh
 - **Theme**: Powerlevel10k (Lean / Pure style with instant prompt)
 - **Plugins**: `git`, `zsh-autosuggestions`, `zsh-syntax-highlighting`
-- **CLI Tools**: `jq`, `htop`, `fzf`, `ripgrep`, `tree`, `tmux`
+- **CLI Tools**: `jq`, `htop`, `fzf`, `ripgrep`, `tree`, `tmux`, `gh` (GitHub CLI)
 - **Python CLI Tools**: `uv`, `pipx`, `glances`, `rich-cli`, `httpie`, `llm`, `ruff`, `tldr`, `copier`
 - **Environment**: GCP Vertex AI variables (`GOOGLE_GENAI_USE_VERTEXAI`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`)
 - **Aliases**: `dev` -> `agy` (Antigravity Agent)

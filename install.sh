@@ -110,3 +110,17 @@ if [ -f "$SCRIPT_DIR/bin/nodetmp" ]; then
     cp "$SCRIPT_DIR/bin/nodetmp" "$HOME_DIR/.local/bin/nodetmp"
     chmod +x "$HOME_DIR/.local/bin/nodetmp"
 fi
+
+
+# 1d. GitHub CLI Setup
+if [ -n "$GH_TOKEN" ] || [ -n "$GITHUB_TOKEN" ]; then
+    TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}"
+    echo "🐙 Setting up GitHub CLI authentication..."
+    mkdir -p "$HOME_DIR/.config/gh"
+    cat << EOF > "$HOME_DIR/.config/gh/hosts.yml"
+github.com:
+    oauth_token: $TOKEN
+    git_protocol: https
+EOF
+    chmod 600 "$HOME_DIR/.config/gh/hosts.yml"
+fi

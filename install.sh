@@ -124,3 +124,11 @@ github.com:
 EOF
     chmod 600 "$HOME_DIR/.config/gh/hosts.yml"
 fi
+
+# 1e. PostgreSQL Service Setup
+echo "🐘 Starting PostgreSQL service and setting up dev database..."
+if command -v service >/dev/null 2>&1; then
+    sudo service postgresql start || true
+    sudo -u postgres psql -c "CREATE USER postgres WITH SUPERUSER PASSWORD 'postgres';" 2>/dev/null || true
+    sudo -u postgres createdb dev 2>/dev/null || true
+fi

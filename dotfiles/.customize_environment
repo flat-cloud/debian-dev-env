@@ -16,9 +16,16 @@ apt-get update -q -y && apt-get install -q -y \
     python3-pip \
     python3-venv \
     tmux \
-    gh
+    gh \
+    postgresql \
+    postgresql-contrib
 
 # Install Python CLI tools for the user
 if [ -n "$SUDO_USER" ]; then
     su - "$SUDO_USER" -c "python3 -m pip install --user --break-system-packages uv pipx glances rich-cli httpie llm ruff tldr copier" || true
 fi
+
+# Start PostgreSQL service and ensure local dev database
+service postgresql start
+su - postgres -c "psql -c \"CREATE USER postgres WITH SUPERUSER PASSWORD 'postgres';\" 2>/dev/null || true"
+su - postgres -c "createdb dev 2>/dev/null || true"

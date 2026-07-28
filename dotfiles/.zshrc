@@ -55,3 +55,8 @@ export YARN_CACHE_FOLDER="/tmp/.cache/yarn"
 alias pyvenv="nodetmp venv"
 
 alias tm='tmux attach -t dev || tmux new -s dev'
+
+# PostgreSQL Aliases
+alias pgstart="sudo service postgresql start"
+alias pgstatus="sudo service postgresql status"
+alias psqldev="sudo -u postgres psql -d dev"

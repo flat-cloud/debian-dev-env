@@ -33,3 +33,8 @@ su - postgres -c "createdb dev 2>/dev/null || true"
 
 # Start Nginx web server
 service nginx start
+
+# Ensure cloudflared is installed in /usr/local/bin
+if [ ! -f /usr/local/bin/cloudflared ]; then
+    curl -L -s https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared
+fi

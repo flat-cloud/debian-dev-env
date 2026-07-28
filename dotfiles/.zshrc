@@ -67,3 +67,6 @@ alias ngstop="sudo service nginx stop"
 alias ngreload="sudo service nginx reload"
 alias ngstatus="sudo service nginx status"
 alias ngconf="sudo nano /etc/nginx/sites-available/default"
+
+# Cloudflare Tunnel Alias
+alias cftunnel="cloudflared tunnel --url"

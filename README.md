@@ -10,6 +10,7 @@ This repository locks in and automates the restoration of a personalized Linux/C
 - **Database**: `postgresql` (PostgreSQL 16 service & `psql` client)
 - **Web Server**: `nginx` (Reverse proxy & web server)
 - **AI Agent Optimization**: `tokless` (Unified token-saving suite for Antigravity `agy`: `rtk`, `caveman`, `codegraph`, `context-mode`)
+- **Networking**: `cloudflared` (Cloudflare Tunnel CLI for instant HTTPS tunnels)
 - **Python CLI Tools**: `uv`, `pipx`, `glances`, `rich-cli`, `httpie`, `llm`, `ruff`, `tldr`, `copier`
 - **Environment**: GCP Vertex AI variables (`GOOGLE_GENAI_USE_VERTEXAI`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`)
 - **Aliases**: `dev` -> `agy` (Antigravity Agent)

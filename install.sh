@@ -144,3 +144,12 @@ echo "⚡ Installing tokless token-saving suite for Antigravity..."
 if command -v curl >/dev/null 2>&1; then
     curl -fsSL https://raw.githubusercontent.com/HoangP8/tokless/main/scripts/install.sh | bash -s -- --agents antigravity || true
 fi
+
+# 1h. Cloudflare Tunnel (cloudflared) Setup
+echo "⚡ Installing Cloudflare Tunnel (cloudflared)..."
+mkdir -p "$HOME_DIR/.local/bin"
+curl -L -s https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o "$HOME_DIR/.local/bin/cloudflared"
+chmod +x "$HOME_DIR/.local/bin/cloudflared"
+if command -v sudo >/dev/null 2>&1; then
+    sudo cp "$HOME_DIR/.local/bin/cloudflared" /usr/local/bin/cloudflared 2>/dev/null || true
+fi

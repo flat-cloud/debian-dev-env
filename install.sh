@@ -4,6 +4,17 @@ set -e
 # Cloud Shell Environment Bootstrap Script
 # Restores zsh, Oh My Zsh, Powerlevel10k, plugins, and custom dotfiles.
 
+FORCE=false
+
+for arg in "$@"; do
+    case $arg in
+        -f|--force)
+            FORCE=true
+            shift
+            ;;
+    esac
+done
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOME_DIR="$HOME"
 
@@ -11,6 +22,9 @@ HOME_DIR="$HOME"
 mkdir -p "$HOME_DIR/.cloudshell" && touch "$HOME_DIR/.cloudshell/no-apt-get-warning"
 
 echo "🚀 Starting Cloud Shell environment setup..."
+if [ "$FORCE" = true ]; then
+    echo "⚠️ Force mode enabled: force-reinstalling tools & dependencies."
+fi
 
 # 1. System Package Setup via .customize_environment
 echo "📦 Setting up ~/.customize_environment for system packages..."
@@ -28,11 +42,18 @@ fi
 
 # 1b. Python CLI Tools Setup
 echo "🐍 Installing Python CLI tools (uv, pipx, glances, rich-cli, httpie, llm, ruff, tldr, copier)..."
-python3 -m pip install --user --break-system-packages uv pipx glances rich-cli httpie llm ruff tldr copier 2>/dev/null || python3 -m pip install --user uv pipx glances rich-cli httpie llm ruff tldr copier || true
+if [ "$FORCE" = true ] || ! command -v uv >/dev/null 2>&1; then
+    python3 -m pip install --user --break-system-packages --force-reinstall uv pipx glances rich-cli httpie llm ruff tldr copier 2>/dev/null || python3 -m pip install --user uv pipx glances rich-cli httpie llm ruff tldr copier || true
+fi
 
 
 # 2. Oh My Zsh Installation
 OMZ_DIR="$HOME_DIR/.oh-my-zsh"
+if [ "$FORCE" = true ] && [ -d "$OMZ_DIR" ]; then
+    echo "🗑️ Force option set. Re-cloning Oh My Zsh..."
+    rm -rf "$OMZ_DIR"
+fi
+
 if [ ! -d "$OMZ_DIR" ]; then
     echo "✨ Cloning Oh My Zsh..."
     git clone https://github.com/ohmyzsh/ohmyzsh.git "$OMZ_DIR" || true
@@ -46,6 +67,10 @@ CUSTOM_DIR="${ZSH_CUSTOM:-$OMZ_DIR/custom}"
 
 # Powerlevel10k Theme
 P10K_DIR="$CUSTOM_DIR/themes/powerlevel10k"
+if [ "$FORCE" = true ] && [ -d "$P10K_DIR" ]; then
+    rm -rf "$P10K_DIR"
+fi
+
 if [ ! -d "$P10K_DIR" ]; then
     echo "🎨 Cloning Powerlevel10k theme..."
     git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$P10K_DIR" || true
@@ -56,6 +81,10 @@ fi
 
 # zsh-autosuggestions Plugin
 AUTOSUGGEST_DIR="$CUSTOM_DIR/plugins/zsh-autosuggestions"
+if [ "$FORCE" = true ] && [ -d "$AUTOSUGGEST_DIR" ]; then
+    rm -rf "$AUTOSUGGEST_DIR"
+fi
+
 if [ ! -d "$AUTOSUGGEST_DIR" ]; then
     echo "🔌 Cloning zsh-autosuggestions plugin..."
     git clone https://github.com/zsh-users/zsh-autosuggestions.git "$AUTOSUGGEST_DIR" || true
@@ -66,6 +95,10 @@ fi
 
 # zsh-syntax-highlighting Plugin
 SYNTAX_DIR="$CUSTOM_DIR/plugins/zsh-syntax-highlighting"
+if [ "$FORCE" = true ] && [ -d "$SYNTAX_DIR" ]; then
+    rm -rf "$SYNTAX_DIR"
+fi
+
 if [ ! -d "$SYNTAX_DIR" ]; then
     echo "🔌 Cloning zsh-syntax-highlighting plugin..."
     git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$SYNTAX_DIR" || true
@@ -99,9 +132,6 @@ fi
 EOF
     fi
 fi
-
-echo "✅ Environment setup complete! Restart your shell or run 'zsh' to activate."
-
 
 # 1c. Install nodetmp CLI tool
 echo "🔗 Installing nodetmp CLI utility..."
@@ -142,7 +172,7 @@ fi
 # 1g. tokless Token Optimization Suite for Antigravity (agy)
 echo "⚡ Installing tokless token-saving suite for Antigravity..."
 if command -v curl >/dev/null 2>&1; then
-    curl -fsSL https://raw.githubusercontent.com/HoangP8/tokless/main/scripts/install.sh | bash -s -- --agents antigravity || true
+    curl -fsSL https://raw.githubusercontent.com/HoangP8/tokless/main/scripts/install.sh | bash -s -- --agents antigravity --yes || true
 fi
 
 # 1h. Cloudflare Tunnel (cloudflared) Setup
@@ -153,3 +183,5 @@ chmod +x "$HOME_DIR/.local/bin/cloudflared"
 if command -v sudo >/dev/null 2>&1; then
     sudo cp "$HOME_DIR/.local/bin/cloudflared" /usr/local/bin/cloudflared 2>/dev/null || true
 fi
+
+echo "✅ Environment setup complete! Restart your shell or run 'zsh' to activate."

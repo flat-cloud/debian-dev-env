@@ -1,24 +1,22 @@
-# Enable Powerlevel10k instant prompt (MUST stay at the top of ~/.zshrc)
-if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
-  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
-fi
+# Enable Powerlevel10k instant prompt (DISABLED)
+# if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+#   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+# fi
 
 # Quiet instant prompt warnings if any background scripts output text
-typeset -g POWERLEVEL9K_INSTANT_PROMPT=quiet
+# typeset -g POWERLEVEL9K_INSTANT_PROMPT=quiet
 
 # Path to Oh My Zsh installation
 export ZSH="$HOME/.oh-my-zsh"
-ZSH_THEME="powerlevel10k/powerlevel10k"
+ZSH_THEME="robbyrussell"
 
-# Enabled Plugins (Excluded fzf plugin to eliminate Debian path warning)
+# Enabled plugins.
 plugins=(
   git
-  zsh-autosuggestions
-  zsh-syntax-highlighting
 )
 
 # Load Oh My Zsh
-source $ZSH/oh-my-zsh.sh
+source "$ZSH/oh-my-zsh.sh"
 
 # Persistent GCP Vertex AI Environment Variables
 export GOOGLE_GENAI_USE_VERTEXAI=True
@@ -30,20 +28,14 @@ export PATH="$HOME/.local/bin:$PATH"
 alias dev='agy'
 
 # Load Powerlevel10k theme configuration if present
-[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+# [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
 
 # nodetmp: Offload node_modules to /tmp to save $HOME quota
-export PATH="$HOME/.local/bin:$PATH"
 alias npmi="nodetmp install"
 alias nmlink="nodetmp link"
 alias nmstatus="nodetmp status"
 alias nmfix="nodetmp fix"
-
-# Auto-repair broken node_modules symlinks on container reboot
-if [ -t 1 ] && command -v nodetmp >/dev/null 2>&1; then
-    (nodetmp fix "$HOME" >/dev/null 2>&1 &)
-fi
 
 
 # Global Package Caches -> /tmp (keeps $HOME disk clean)
@@ -70,3 +62,11 @@ alias ngconf="sudo nano /etc/nginx/sites-available/default"
 
 # Cloudflare Tunnel Alias
 alias cftunnel="cloudflared tunnel --url"
+
+# zsh-syntax-highlighting disabled to prevent paste crash
+# if [[ "${CLOUDSHELL_DISABLE_ZSH_HIGHLIGHTING:-0}" != 1 && \
+#       -r "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]]; then
+#   typeset -g ZSH_HIGHLIGHT_MAXLENGTH=512
+#   typeset -gA ZSH_HIGHLIGHT_STYLES
+#   source "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+# fi

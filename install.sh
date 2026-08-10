@@ -116,22 +116,7 @@ for df in .zshrc .p10k.zsh .hushlogin .tmux.conf; do
     fi
 done
 
-# 5. Hand off ~/.bashrc to zsh for interactive shells
-BASHRC="$HOME_DIR/.bashrc"
-HANDOFF_COMMENT="# Auto-handoff interactive sessions to zsh"
-if [ -f "$BASHRC" ]; then
-    if ! grep -q "$HANDOFF_COMMENT" "$BASHRC"; then
-        echo "🐚 Adding zsh handoff to ~/.bashrc..."
-        cat << 'EOF' >> "$BASHRC"
 
-# Auto-handoff interactive sessions to zsh
-if [ -t 1 ] && [ -x "$(command -v zsh)" ] && [ -z "$ZSH_VERSION" ]; then
-    export SHELL="$(command -v zsh)"
-    exec zsh -l
-fi
-EOF
-    fi
-fi
 
 # 1c. Install nodetmp CLI tool
 echo "🔗 Installing nodetmp CLI utility..."

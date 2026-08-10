@@ -8,7 +8,8 @@
 
 # Path to Oh My Zsh installation
 export ZSH="$HOME/.oh-my-zsh"
-ZSH_THEME="robbyrussell"
+# Load Powerlevel10k theme
+ZSH_THEME="powerlevel10k/powerlevel10k"
 
 # Enabled plugins.
 plugins=(
@@ -28,7 +29,7 @@ export PATH="$HOME/.local/bin:$PATH"
 alias dev='agy'
 
 # Load Powerlevel10k theme configuration if present
-# [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
 
 # nodetmp: Offload node_modules to /tmp to save $HOME quota

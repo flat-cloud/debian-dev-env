@@ -1,10 +1,10 @@
-# Enable Powerlevel10k instant prompt (DISABLED)
-# if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
-#   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
-# fi
+# Enable Powerlevel10k instant prompt (MUST stay at the top of ~/.zshrc)
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
 
 # Quiet instant prompt warnings if any background scripts output text
-# typeset -g POWERLEVEL9K_INSTANT_PROMPT=quiet
+typeset -g POWERLEVEL9K_INSTANT_PROMPT=quiet
 
 # Path to Oh My Zsh installation
 export ZSH="$HOME/.oh-my-zsh"
@@ -68,10 +68,20 @@ alias ngconf="sudo nano /etc/nginx/sites-available/default"
 # Cloudflare Tunnel Alias
 alias cftunnel="cloudflared tunnel --url"
 
-# zsh-syntax-highlighting disabled to prevent paste crash
-# if [[ "${CLOUDSHELL_DISABLE_ZSH_HIGHLIGHTING:-0}" != 1 && \
-#       -r "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]]; then
-#   typeset -g ZSH_HIGHLIGHT_MAXLENGTH=512
-#   typeset -gA ZSH_HIGHLIGHT_STYLES
-#   source "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
-# fi
+# zsh-syntax-highlighting must be sourced after Powerlevel10k and every other
+# ZLE integration. Limit the inspected buffer to prevent large pastes from
+# monopolizing a resource-constrained Cloud Shell session.
+if [[ "${CLOUDSHELL_DISABLE_ZSH_HIGHLIGHTING:-0}" != 1 && \
+      -r "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]]; then
+  typeset -g ZSH_HIGHLIGHT_MAXLENGTH=512
+  typeset -gA ZSH_HIGHLIGHT_STYLES
+  ZSH_HIGHLIGHT_STYLES[default]='fg=244'
+  ZSH_HIGHLIGHT_STYLES[arg0]='fg=250'
+  ZSH_HIGHLIGHT_STYLES[reserved-word]='fg=244'
+  ZSH_HIGHLIGHT_STYLES[single-quoted-argument]='fg=244'
+  ZSH_HIGHLIGHT_STYLES[double-quoted-argument]='fg=244'
+  ZSH_HIGHLIGHT_STYLES[dollar-quoted-argument]='fg=244'
+  ZSH_HIGHLIGHT_STYLES[redirection]='fg=244'
+  ZSH_HIGHLIGHT_STYLES[comment]='fg=244'
+  source "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+fi

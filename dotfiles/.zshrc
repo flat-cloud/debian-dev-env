@@ -14,10 +14,14 @@ ZSH_THEME="powerlevel10k/powerlevel10k"
 # Enabled plugins.
 plugins=(
   git
+  zsh-autosuggestions
 )
 
 # Load Oh My Zsh
 source "$ZSH/oh-my-zsh.sh"
+
+# Keep suggestions readable in dim gray (color 244)
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=244'
 
 # Persistent GCP Vertex AI Environment Variables
 export GOOGLE_GENAI_USE_VERTEXAI=True

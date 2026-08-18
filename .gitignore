@@ -15,3 +15,6 @@ id_ed25519*
 # Cache & local state
 .cache/
 .cloudshell/
+.codegraph/
+.zcompdump*
+dotfiles/.zcompdump*

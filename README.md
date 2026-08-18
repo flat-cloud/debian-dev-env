@@ -15,6 +15,12 @@ This repository locks in and automates the restoration of a personalized Linux/C
 - **Environment**: GCP Vertex AI variables (`GOOGLE_GENAI_USE_VERTEXAI`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`)
 - **Aliases**: `dev` -> `agy` (Antigravity Agent)
 
+The Zsh configuration loads syntax highlighting after Powerlevel10k, caps highlighting work for large pasted commands, and uses a Cloud Shell-friendly gray palette. For emergency troubleshooting, start Zsh with highlighting disabled:
+
+```bash
+CLOUDSHELL_DISABLE_ZSH_HIGHLIGHTING=1 zsh -l
+```
+
 ---
 
 ## ⚡ Quick Start / Installation
@@ -47,11 +53,32 @@ cd ~/cloudshell-env
 
 ## 💾 Saving Disk Space: `nodetmp` Utility
 
-To prevent `node_modules` from consuming your persistent **5 GB `$HOME` disk quota**, this environment includes **`nodetmp`** — a tool that offloads `node_modules` to `/tmp` via symlinks.
+To prevent reproducible dependencies from consuming your persistent **5 GB `$HOME` disk quota**, this environment includes **`nodetmp`**. It offloads Node `node_modules`, Composer `vendor`, Python `.venv`, Rust `target`, and known package/browser caches to per-user storage under `/tmp`, then leaves symlinks in the project.
 
-### Usage:
-- `nodetmp link` (or `nmlink`): Offloads `node_modules` in `$PWD` to `/tmp/node_modules_store/<project_hash>`.
+### Usage
+
+- `nodetmp enforce [path]` (or `nmenforce`): Recursively finds supported projects, safely moves their dependency directories, and migrates known caches. Use `--dry-run` to preview.
+- `nodetmp link [path]` (or `nmlink`): Safely moves supported dependency directories for one project and replaces them with symlinks.
 - `nodetmp install` (or `npmi`): Creates the `/tmp` symlink if missing, then runs `npm install`.
-- `nodetmp status` (or `nmstatus`): Displays whether `node_modules` is linked and how much disk space is saved.
-- `nodetmp fix` (or `nmfix`): Scans for broken symlinks after container reboots and restores `/tmp` target directories automatically.
-- `nodetmp scan [path]`: Scans all projects in `$HOME` to audit `node_modules` locations & disk usage.
+- `nodetmp venv` (or `pyvenv`): Creates an offloaded Python virtual environment.
+- `nodetmp status` (or `nmstatus`): Displays whether project targets are linked and how much temporary disk space they use.
+- `nodetmp fix` (or `nmfix`): Scans for broken managed symlinks after container reboots and restores their targets.
+- `nodetmp scan [path]`: Audits all supported dependency locations and disk usage.
+- `nodetmp clean`: Removes only `nodetmp`-managed links and temporary data for the current project.
+
+`nodetmp` refuses to replace or remove symlinks it does not manage. Transfers are copied to a staging directory before the persistent original is removed. Set `NODETMP_STORE_DIR` to override its temporary storage root.
+
+The installer and boot customization run `nodetmp enforce` automatically. Existing real dependency directories are moved to `/tmp`; after a Cloud Shell VM reset, broken managed links are recreated with empty targets. Enforcement never downloads packages. Run the normal locked install command (`npm ci`, `composer install`, `uv sync`, and so on) when you first need a project in the new session. `nmfix` remains available when you explicitly want broken links restored and dependencies installed.
+
+The cache setup is active in both login Bash and Zsh. It covers npm, pnpm, Yarn, Bun, pip, uv, Composer, Playwright, Puppeteer, and Cypress caches without moving persistent configuration or credentials.
+
+### Development checks
+
+Run the dependency-free regression suite before changing `nodetmp`:
+
+```bash
+bash -n bin/nodetmp install.sh dotfiles/.customize_environment tests/nodetmp_test.sh
+sh -n dotfiles/dependency-cache-env.sh
+zsh -n dotfiles/.zshrc dotfiles/.p10k.zsh
+./tests/nodetmp_test.sh
+```

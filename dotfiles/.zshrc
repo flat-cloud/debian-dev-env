@@ -39,15 +39,14 @@ alias dev='agy'
 # nodetmp: Offload node_modules to /tmp to save $HOME quota
 alias npmi="nodetmp install"
 alias nmlink="nodetmp link"
+alias nmenforce="nodetmp enforce"
 alias nmstatus="nodetmp status"
 alias nmfix="nodetmp fix"
 
 
-# Global Package Caches -> /tmp (keeps $HOME disk clean)
-export PIP_CACHE_DIR="/tmp/.cache/pip"
-export UV_CACHE_DIR="/tmp/.cache/uv"
-export NPM_CONFIG_CACHE="/tmp/.cache/npm"
-export YARN_CACHE_FOLDER="/tmp/.cache/yarn"
+# Global package caches -> per-user /tmp storage (keeps $HOME disk clean)
+[[ ! -r "$HOME/.config/cloudshell-env/dependency-cache-env.sh" ]] || \
+  source "$HOME/.config/cloudshell-env/dependency-cache-env.sh"
 
 alias pyvenv="nodetmp venv"
 

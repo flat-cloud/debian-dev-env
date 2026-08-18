@@ -38,3 +38,9 @@ service nginx start
 if [ ! -f /usr/local/bin/cloudflared ]; then
     curl -L -s https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared
 fi
+
+# Recreate ephemeral dependency/cache targets after the Cloud Shell VM resets.
+# This does not install packages; normal npm/composer/uv commands populate /tmp.
+if [ -n "${SUDO_USER:-}" ]; then
+    su - "$SUDO_USER" -c 'if [ -x "$HOME/.local/bin/nodetmp" ]; then "$HOME/.local/bin/nodetmp" enforce "$HOME"; fi' || true
+fi

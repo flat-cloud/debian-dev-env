@@ -116,6 +116,22 @@ for df in .zshrc .p10k.zsh .hushlogin .tmux.conf; do
     fi
 done
 
+# Route disposable package caches to the ephemeral VM for Bash and Zsh.
+echo "🗃️ Configuring ephemeral dependency caches..."
+mkdir -p "$HOME_DIR/.config/cloudshell-env"
+if [ -f "$SCRIPT_DIR/dotfiles/dependency-cache-env.sh" ]; then
+    cp "$SCRIPT_DIR/dotfiles/dependency-cache-env.sh" \
+        "$HOME_DIR/.config/cloudshell-env/dependency-cache-env.sh"
+    chmod 644 "$HOME_DIR/.config/cloudshell-env/dependency-cache-env.sh"
+fi
+if ! grep -Fq '.config/cloudshell-env/dependency-cache-env.sh' "$HOME_DIR/.profile" 2>/dev/null; then
+    printf '\n%s\n' \
+        '# Keep disposable dependency caches off Cloud Shell persistent storage.' \
+        'if [ -r "$HOME/.config/cloudshell-env/dependency-cache-env.sh" ]; then' \
+        '    . "$HOME/.config/cloudshell-env/dependency-cache-env.sh"' \
+        'fi' >> "$HOME_DIR/.profile"
+fi
+
 
 
 # 1c. Install nodetmp CLI tool
@@ -124,6 +140,7 @@ mkdir -p "$HOME_DIR/.local/bin"
 if [ -f "$SCRIPT_DIR/bin/nodetmp" ]; then
     cp "$SCRIPT_DIR/bin/nodetmp" "$HOME_DIR/.local/bin/nodetmp"
     chmod +x "$HOME_DIR/.local/bin/nodetmp"
+    "$HOME_DIR/.local/bin/nodetmp" enforce "$HOME_DIR"
 fi
 
 

@@ -191,6 +191,10 @@ do_link() {
     local target_name
 
     project_path="$(canonical_directory "$requested_path")"
+    if [[ ! -w "$project_path" ]]; then
+        echo "⚠️  Skipping non-writable project directory: $project_path"
+        return 0
+    fi
     project_name="$(basename -- "$project_path")"
     store="$(get_project_tmp_store "$project_path")"
     get_project_targets "$project_path"
@@ -268,7 +272,7 @@ do_enforce() {
     done < <(
         find "$search_path" -xdev -mindepth 1 -maxdepth "$SCAN_DEPTH" \
             \( -type d \( -name '.*' -o -name node_modules -o -name vendor -o \
-                -name .venv -o -name target \) -prune \) -o \
+                -name .venv -o -name target -o -name gopath \) -prune \) -o \
             \( -type f \( -name package.json -o -name composer.json -o -name pyproject.toml -o \
                 -name requirements.txt -o -name Pipfile -o -name uv.lock -o -name Cargo.toml \) \
                 -print0 \) 2>/dev/null
@@ -410,7 +414,7 @@ do_fix() {
             esac
         fi
     done < <(find "$search_path" -mindepth 1 -maxdepth "$SCAN_DEPTH" \
-        \( -type d -name '.*' -prune \) -o \
+        \( -type d \( -name '.*' -o -name gopath \) -prune \) -o \
         \( -name node_modules -o -name vendor -o -name .venv -o -name target \) \
         -type l -print0 2>/dev/null)
 
@@ -444,7 +448,7 @@ do_scan() {
         fi
     done < <(
         find "$search_path" -xdev -mindepth 1 -maxdepth "$SCAN_DEPTH" \
-            \( -type d -name '.*' ! -name .venv -prune \) -o \
+            \( -type d \( -name '.*' ! -name .venv -o -name gopath \) -prune \) -o \
             \( -type d \( -name node_modules -o -name vendor -o -name .venv -o -name target \) \
                 -print0 -prune \) -o \
             \( -type l \( -name node_modules -o -name vendor -o -name .venv -o -name target \) \

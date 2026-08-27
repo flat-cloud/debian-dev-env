@@ -147,4 +147,36 @@ assert_equals "$NODETMP_STORE_DIR/cache/ms-playwright" "$PLAYWRIGHT_BROWSERS_PAT
 assert_equals "$NODETMP_STORE_DIR/cache/puppeteer" "$PUPPETEER_CACHE_DIR"
 assert_equals "$NODETMP_STORE_DIR/cache/cypress" "$CYPRESS_CACHE_FOLDER"
 
+# Prune: old Codex standalone releases are removed; current is kept.
+standalone_releases="$HOME/.codex/packages/standalone/releases"
+current_release="$standalone_releases/1.0.0-linux"
+old_release1="$standalone_releases/0.9.0-linux"
+old_release2="$standalone_releases/0.8.0-linux"
+mkdir -p -- "$current_release" "$old_release1" "$old_release2"
+mkdir -p -- "$(dirname -- "$HOME/.codex/packages/standalone/current")"
+ln -sfn "$current_release" "$HOME/.codex/packages/standalone/current"
+"$NODETMP" prune "$HOME" --dry-run >/dev/null
+assert_directory "$old_release1"
+assert_directory "$old_release2"
+"$NODETMP" prune "$HOME" >/dev/null
+[[ ! -d "$old_release1" ]] || fail "old Codex release 0.9.0 should have been removed"
+[[ ! -d "$old_release2" ]] || fail "old Codex release 0.8.0 should have been removed"
+assert_directory "$current_release"
+
+# Prune: stale zcompdump files from other hostnames are removed; current host kept.
+touch "$HOME/.zcompdump-othermachine-5.9"
+touch "$HOME/.zcompdump-othermachine-5.9.zwc"
+current_host="$(hostname 2>/dev/null || echo 'testhost')"
+touch "$HOME/.zcompdump-${current_host}-5.9"
+"$NODETMP" prune "$HOME" >/dev/null
+[[ ! -f "$HOME/.zcompdump-othermachine-5.9" ]] || fail "stale zcompdump for othermachine should be removed"
+[[ ! -f "$HOME/.zcompdump-othermachine-5.9.zwc" ]] || fail "stale zcompdump .zwc for othermachine should be removed"
+assert_file "$HOME/.zcompdump-${current_host}-5.9"
+
+# Prune: leaked dev_tmp_store under ~/tmp on persistent disk is removed.
+mkdir -p "$HOME/tmp/dev_tmp_store"
+"$NODETMP" prune "$HOME" >/dev/null
+[[ ! -d "$HOME/tmp/dev_tmp_store" ]] || fail "leaked ~/tmp/dev_tmp_store should have been removed"
+[[ ! -d "$HOME/tmp" ]] || fail "empty ~/tmp should have been removed"
+
 echo "PASS: nodetmp regression tests"

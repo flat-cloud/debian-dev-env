@@ -42,6 +42,7 @@ alias nmlink="nodetmp link"
 alias nmenforce="nodetmp enforce"
 alias nmstatus="nodetmp status"
 alias nmfix="nodetmp fix"
+alias nmprune="nodetmp prune"
 
 
 # Global package caches -> per-user /tmp storage (keeps $HOME disk clean)

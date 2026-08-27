@@ -13,7 +13,7 @@ show_help() {
 Usage: nodetmp [command] [options]
 
 Commands:
-  enforce [path]    Recursively offload supported dependencies and caches
+  enforce [path]    Recursively offload supported dependencies, caches, and prune
   link [path]       Offload dependencies for one project
   install, i        Ensure /tmp symlinks exist, then run `npm install`
   venv              Ensure /tmp .venv exists, then create a virtualenv
@@ -21,6 +21,7 @@ Commands:
   scan [path]       Audit dependency locations without changing them
   fix, repair       Re-create missing /tmp targets for managed broken symlinks
   clean             Remove managed symlinks and temp data for the current project
+  prune [path]      Prune older standalone binaries, editor logs, and stale caches
   help              Display this help message
 
 Supported project directories:
@@ -28,6 +29,7 @@ Supported project directories:
   vendor            composer.json
   .venv             pyproject.toml, requirements.txt, Pipfile, or uv.lock
   target            Cargo.toml
+  .next             next.config.js, next.config.mjs, next.config.ts
 
 Options for enforce:
   --dry-run         Show what would change
@@ -38,11 +40,13 @@ Environment:
   NODETMP_SCAN_DEPTH Maximum recursive scan depth (default: 8)
 
 Aliases:
-  npmi     -> nodetmp install
-  nmlink   -> nodetmp link
+  npmi      -> nodetmp install
+  nmlink    -> nodetmp link
   nmenforce -> nodetmp enforce
-  nmstatus -> nodetmp status
-  pyvenv   -> nodetmp venv
+  nmstatus  -> nodetmp status
+  nmfix     -> nodetmp fix
+  nmprune   -> nodetmp prune
+  pyvenv    -> nodetmp venv
 EOF
 }
 
@@ -103,6 +107,10 @@ get_project_targets() {
     fi
     if [[ -f "$project_path/Cargo.toml" || -e "$project_path/target" || -L "$project_path/target" ]]; then
         PROJECT_TARGETS+=(target)
+    fi
+    if [[ -f "$project_path/next.config.js" || -f "$project_path/next.config.mjs" || \
+          -f "$project_path/next.config.ts" || -e "$project_path/.next" || -L "$project_path/.next" ]]; then
+        PROJECT_TARGETS+=(.next)
     fi
 }
 
@@ -229,6 +237,9 @@ do_caches() {
         "$HOME/.cache/Cypress|cypress"
         "$HOME/.cache/composer|composer"
         "$HOME/.composer/cache|composer-home"
+        "$HOME/.cache/cloud-code|cloud-code"
+        "$HOME/.cache/go-build|go-build"
+        "$HOME/gopath/pkg|gopath-pkg"
     )
 
     echo "🗃️  Offloading existing package and browser caches..."
@@ -274,12 +285,14 @@ do_enforce() {
             \( -type d \( -name '.*' -o -name node_modules -o -name vendor -o \
                 -name .venv -o -name target -o -name gopath \) -prune \) -o \
             \( -type f \( -name package.json -o -name composer.json -o -name pyproject.toml -o \
-                -name requirements.txt -o -name Pipfile -o -name uv.lock -o -name Cargo.toml \) \
+                -name requirements.txt -o -name Pipfile -o -name uv.lock -o -name Cargo.toml -o \
+                -name next.config.js -o -name next.config.mjs -o -name next.config.ts \) \
                 -print0 \) 2>/dev/null
     )
 
     if [[ "$include_caches" == true && "$search_path" == "$HOME" ]]; then
         do_caches
+        do_prune "$HOME"
     fi
 
     if [[ "$DRY_RUN" == true ]]; then
@@ -488,6 +501,96 @@ do_clean() {
     fi
 }
 
+# Prune items that grow unboundedly on persistent $HOME storage but are safe to
+# delete: old standalone binary releases, editor/IDE log directories, stale
+# zcompdump files from previous Cloud Shell hostnames, and any dev_tmp_store
+# directory that leaked onto persistent storage instead of /tmp.
+do_prune() {
+    local search_root="$HOME"
+    local freed=0
+    local path
+    local argument
+
+    for argument in "$@"; do
+        case "$argument" in
+            --dry-run) DRY_RUN=true ;;
+            -*) fail "unknown prune option: $argument"; return 1 ;;
+            *) search_root="$argument" ;;
+        esac
+    done
+
+    echo "✂️  Pruning stale data under $search_root..."
+
+    # 1. Old Codex standalone releases (keep only 'current').
+    local standalone_dir="$search_root/.codex/packages/standalone/releases"
+    local current_link="$search_root/.codex/packages/standalone/current"
+    if [[ -d "$standalone_dir" ]]; then
+        local current_target
+        current_target="$(readlink -- "$current_link" 2>/dev/null || true)"
+        while IFS= read -r -d '' path; do
+            [[ "$path" == "$current_target" ]] && continue
+            if [[ "$DRY_RUN" == true ]]; then
+                echo "[dry-run] Would remove old Codex release: $path"
+            else
+                rm -rf -- "$path"
+                echo "🧹 Removed old Codex release: $(basename -- "$path")"
+                freed=$((freed + 1))
+            fi
+        done < <(find "$standalone_dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+    fi
+
+    # 2. CodeOSS / VS Code IDE log directory (regenerated each session).
+    local editor_logs="$search_root/.codeoss/data/logs"
+    if [[ -d "$editor_logs" ]]; then
+        if [[ "$DRY_RUN" == true ]]; then
+            echo "[dry-run] Would clear editor logs: $editor_logs"
+        else
+            rm -rf -- "$editor_logs/"*
+            echo "🧹 Cleared editor logs: $editor_logs"
+            freed=$((freed + 1))
+        fi
+    fi
+
+    # 3. Stale zcompdump files from previous Cloud Shell hostnames.
+    #    Pattern: ~/.zcompdump-<hostname>-* (hostname differs from current host).
+    local current_host
+    current_host="$(hostname 2>/dev/null || true)"
+    while IFS= read -r -d '' path; do
+        local fname
+        fname="$(basename -- "$path")"
+        # Skip the current host's file.
+        [[ "$fname" == ".zcompdump-${current_host}-"* ]] && continue
+        if [[ "$DRY_RUN" == true ]]; then
+            echo "[dry-run] Would remove stale zcompdump: $path"
+        else
+            rm -f -- "$path"
+            echo "🧹 Removed stale zcompdump: $fname"
+            freed=$((freed + 1))
+        fi
+    done < <(find "$search_root" -maxdepth 1 -name '.zcompdump-*' -print0 2>/dev/null)
+
+    # 4. dev_tmp_store leaked onto persistent $HOME (should live in /tmp).
+    #    Only remove if it is NOT the configured STORE_ROOT.
+    local leaked_store="$search_root/tmp/dev_tmp_store"
+    if [[ -d "$leaked_store" && "$leaked_store" != "$STORE_ROOT" ]]; then
+        if [[ "$DRY_RUN" == true ]]; then
+            echo "[dry-run] Would remove leaked persistent tmp store: $leaked_store"
+        else
+            rm -rf -- "$leaked_store"
+            # Remove parent ~/tmp if now empty.
+            rmdir -- "$(dirname -- "$leaked_store")" 2>/dev/null || true
+            echo "🧹 Removed leaked persistent tmp store: $leaked_store"
+            freed=$((freed + 1))
+        fi
+    fi
+
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "✅ Dry-run prune complete."
+    else
+        echo "✅ Prune complete; $freed item(s) removed."
+    fi
+}
+
 main() {
     local command="${1:-link}"
     if [[ $# -gt 0 ]]; then
@@ -503,6 +606,7 @@ main() {
         scan)       do_scan "$@" ;;
         fix|repair) do_fix "$@" ;;
         clean)      do_clean ;;
+        prune)      do_prune "$@" ;;
         help|--help|-h) show_help ;;
         *)
             echo "Unknown command: $command" >&2

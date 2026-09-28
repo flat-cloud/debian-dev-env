@@ -5,14 +5,45 @@ set -e
 # Restores zsh, Oh My Zsh, Powerlevel10k, plugins, and custom dotfiles.
 
 FORCE=false
+INSTALL_PYTHON_TOOLS=false
+INSTALL_NODE_TOOLS=false
 
-for arg in "$@"; do
-    case $arg in
+show_help() {
+    cat <<'EOF'
+Usage: ./install.sh [options]
+
+Options:
+  -p, --python-tools  Install optional Python CLI tools
+  -n, --node-tools    Install optional Node-based tokless tools
+  -f, --force         Force reinstall selected tools and shell components
+  -h, --help          Show this help text
+
+Python and Node tools are skipped unless their explicit flags are present.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
         -f|--force)
             FORCE=true
-            shift
+            ;;
+        -p|--python-tools)
+            INSTALL_PYTHON_TOOLS=true
+            ;;
+        -n|--node-tools)
+            INSTALL_NODE_TOOLS=true
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            show_help >&2
+            exit 2
             ;;
     esac
+    shift
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,10 +71,23 @@ if command -v sudo >/dev/null 2>&1; then
     sudo apt-get install -q -y zsh jq htop fzf ripgrep tree python3-pip python3-venv tmux || true
 fi
 
-# 1b. Python CLI Tools Setup
-echo "🐍 Installing Python CLI tools (uv, pipx, glances, rich-cli, httpie, llm, ruff, tldr, copier)..."
-if [ "$FORCE" = true ] || ! command -v uv >/dev/null 2>&1; then
-    python3 -m pip install --user --break-system-packages --force-reinstall uv pipx glances rich-cli httpie llm ruff tldr copier 2>/dev/null || python3 -m pip install --user uv pipx glances rich-cli httpie llm ruff tldr copier || true
+# 1b. Optional Python CLI Tools Setup
+if [ "$INSTALL_PYTHON_TOOLS" = true ]; then
+    echo "🐍 Installing optional Python CLI tools (uv, pipx, glances, rich-cli, httpie, llm, ruff, tldr, copier)..."
+    PYTHON_TOOLS_READY=true
+    for tool in uv pipx glances rich httpie llm ruff tldr copier; do
+        if ! command -v "$tool" >/dev/null 2>&1; then
+            PYTHON_TOOLS_READY=false
+            break
+        fi
+    done
+    if [ "$FORCE" = true ] || [ "$PYTHON_TOOLS_READY" = false ]; then
+        python3 -m pip install --user --break-system-packages --force-reinstall uv pipx glances rich-cli httpie llm ruff tldr copier 2>/dev/null || python3 -m pip install --user uv pipx glances rich-cli httpie llm ruff tldr copier || true
+    else
+        echo "✅ Optional Python CLI tools are already installed."
+    fi
+else
+    echo "⏭️ Skipping optional Python CLI tools; pass -p to install them."
 fi
 
 
@@ -171,10 +215,14 @@ if command -v service >/dev/null 2>&1; then
     sudo service nginx start || true
 fi
 
-# 1g. tokless Token Optimization Suite for Antigravity (agy)
-echo "⚡ Installing tokless token-saving suite for Antigravity..."
-if command -v curl >/dev/null 2>&1; then
-    curl -fsSL https://raw.githubusercontent.com/HoangP8/tokless/main/scripts/install.sh | bash -s -- --agents antigravity --yes || true
+# 1g. Optional Node-based tokless tools for Antigravity (agy)
+if [ "$INSTALL_NODE_TOOLS" = true ]; then
+    echo "⚡ Installing optional Node-based tokless tools for Antigravity..."
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL https://raw.githubusercontent.com/HoangP8/tokless/main/scripts/install.sh | bash -s -- --agents antigravity --yes || true
+    fi
+else
+    echo "⏭️ Skipping optional Node-based tools; pass -n to install them."
 fi
 
 # 1h. Cloudflare Tunnel (cloudflared) Setup

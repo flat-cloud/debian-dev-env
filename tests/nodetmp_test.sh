@@ -88,6 +88,34 @@ assert_symlink "$project/node_modules"
 assert_directory "$project/node_modules"
 assert_file "$TEST_ROOT/npm-calls"
 
+# Recursive enforcement discovers dependency links even without a manifest and
+# migrates known legacy ephemeral layouts into the current managed store.
+legacy_project="$TEST_ROOT/projects/legacy-link-only"
+legacy_target="$TEST_ROOT/old-dependencies/legacy-link-only/node_modules"
+mkdir -p -- "$legacy_project" "$legacy_target"
+printf 'legacy dependency\n' >"$legacy_target/example"
+ln -s -- "$legacy_target" "$legacy_project/node_modules"
+legacy_output="$("$NODETMP" enforce "$TEST_ROOT/projects" --no-caches)"
+assert_contains "Migrating legacy ephemeral target" "$legacy_output"
+assert_symlink "$legacy_project/node_modules"
+assert_file "$legacy_project/node_modules/example"
+[[ "$(readlink -- "$legacy_project/node_modules")" == "$NODETMP_STORE_DIR/"* ]] || \
+    fail "legacy link was not adopted into the managed store"
+[[ ! -e "$legacy_target" ]] || fail "legacy ephemeral target should have been moved"
+
+# Missing legacy targets are adopted as empty managed directories rather than
+# aborting the rest of a recursive enforcement pass.
+broken_legacy_project="$TEST_ROOT/projects/broken-legacy-link-only"
+broken_legacy_target="$TEST_ROOT/missing-dependencies/broken-legacy-link-only/node_modules"
+mkdir -p -- "$broken_legacy_project"
+ln -s -- "$broken_legacy_target" "$broken_legacy_project/node_modules"
+broken_legacy_output="$("$NODETMP" enforce "$TEST_ROOT/projects" --no-caches)"
+assert_contains "Adopting broken legacy link" "$broken_legacy_output"
+assert_symlink "$broken_legacy_project/node_modules"
+assert_directory "$broken_legacy_project/node_modules"
+[[ "$(readlink -- "$broken_legacy_project/node_modules")" == "$NODETMP_STORE_DIR/"* ]] || \
+    fail "broken legacy link was not adopted into the managed store"
+
 # Recursive enforcement handles Composer, Node, and known caches in one pass.
 enforced_project="$HOME/enforced-project"
 mkdir -p -- "$enforced_project/node_modules" "$enforced_project/vendor" "$HOME/.npm"
@@ -147,21 +175,33 @@ assert_equals "$NODETMP_STORE_DIR/cache/ms-playwright" "$PLAYWRIGHT_BROWSERS_PAT
 assert_equals "$NODETMP_STORE_DIR/cache/puppeteer" "$PUPPETEER_CACHE_DIR"
 assert_equals "$NODETMP_STORE_DIR/cache/cypress" "$CYPRESS_CACHE_FOLDER"
 
-# Prune: old Codex standalone releases are removed; current is kept.
+# Prune: old releases across every Codex package channel are removed; current is kept.
 standalone_releases="$HOME/.codex/packages/standalone/releases"
 current_release="$standalone_releases/1.0.0-linux"
 old_release1="$standalone_releases/0.9.0-linux"
 old_release2="$standalone_releases/0.8.0-linux"
+daemon_releases="$HOME/.codex/packages/app-server-daemon/releases"
+current_daemon_release="$daemon_releases/2.0.0-linux"
+old_daemon_release="$daemon_releases/1.0.0-linux"
 mkdir -p -- "$current_release" "$old_release1" "$old_release2"
+mkdir -p -- "$current_daemon_release" "$old_daemon_release"
 mkdir -p -- "$(dirname -- "$HOME/.codex/packages/standalone/current")"
 ln -sfn "$current_release" "$HOME/.codex/packages/standalone/current"
+ln -sfn "$current_daemon_release" "$HOME/.codex/packages/app-server-daemon/current"
+mkdir -p -- "$HOME/.nvm/.cache/bin/example"
+printf 'archive\n' >"$HOME/.nvm/.cache/bin/example/node.tar.xz"
 "$NODETMP" prune "$HOME" --dry-run >/dev/null
 assert_directory "$old_release1"
 assert_directory "$old_release2"
+assert_directory "$old_daemon_release"
+assert_file "$HOME/.nvm/.cache/bin/example/node.tar.xz"
 "$NODETMP" prune "$HOME" >/dev/null
 [[ ! -d "$old_release1" ]] || fail "old Codex release 0.9.0 should have been removed"
 [[ ! -d "$old_release2" ]] || fail "old Codex release 0.8.0 should have been removed"
+[[ ! -d "$old_daemon_release" ]] || fail "old app-server daemon release should have been removed"
 assert_directory "$current_release"
+assert_directory "$current_daemon_release"
+[[ ! -d "$HOME/.nvm/.cache" ]] || fail "NVM download cache should have been removed"
 
 # Prune: stale zcompdump files from other hostnames are removed; current host kept.
 touch "$HOME/.zcompdump-othermachine-5.9"
@@ -178,5 +218,59 @@ mkdir -p "$HOME/tmp/dev_tmp_store"
 "$NODETMP" prune "$HOME" >/dev/null
 [[ ! -d "$HOME/tmp/dev_tmp_store" ]] || fail "leaked ~/tmp/dev_tmp_store should have been removed"
 [[ ! -d "$HOME/tmp" ]] || fail "empty ~/tmp should have been removed"
+
+# Prune: recursively remove dist only when Git confirms it is ignored.
+ignored_dist_repo="$HOME/projects/ignored-dist-project"
+kept_dist_repo="$HOME/projects/kept-dist-project"
+mkdir -p -- "$ignored_dist_repo/dist" "$kept_dist_repo/dist"
+git -C "$ignored_dist_repo" init -q
+git -C "$kept_dist_repo" init -q
+printf 'dist/\n' >"$ignored_dist_repo/.gitignore"
+printf 'generated\n' >"$ignored_dist_repo/dist/output.js"
+printf 'release\n' >"$kept_dist_repo/dist/release.js"
+"$NODETMP" prune "$HOME" --dry-run >/dev/null
+assert_directory "$ignored_dist_repo/dist"
+assert_directory "$kept_dist_repo/dist"
+"$NODETMP" prune "$HOME" >/dev/null
+[[ ! -d "$ignored_dist_repo/dist" ]] || fail "ignored dist should have been removed"
+assert_file "$kept_dist_repo/dist/release.js"
+
+# Prune: real dependency directories are offloaded and tagged orphan stores are removed.
+prune_project="$HOME/projects/prune-dependency-project"
+orphan_store="$NODETMP_STORE_DIR/orphaned-project_deadbeef0000"
+mkdir -p -- "$prune_project/node_modules" "$orphan_store/node_modules"
+printf '{}\n' >"$prune_project/package.json"
+printf 'dependency\n' >"$prune_project/node_modules/example"
+printf '%s\n' "$HOME/projects/missing-project" >"$orphan_store/.nodetmp-project"
+"$NODETMP" prune "$HOME" --dry-run --no-docker --no-binaries >/dev/null
+assert_not_symlink "$prune_project/node_modules"
+assert_directory "$orphan_store"
+"$NODETMP" prune "$HOME" --no-docker --no-binaries >/dev/null
+assert_symlink "$prune_project/node_modules"
+assert_file "$prune_project/node_modules/example"
+[[ ! -d "$orphan_store" ]] || fail "tagged orphan dependency store should have been removed"
+
+# Prune: Docker dry-run reports usage; a real run prunes only unused images and build cache.
+cat >"$TEST_ROOT/bin/docker" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$TEST_ROOT/docker-calls"
+case "$*" in
+    info) exit 0 ;;
+    "system df") printf 'TYPE TOTAL ACTIVE SIZE RECLAIMABLE\n'; exit 0 ;;
+    "image prune --all --force") exit 0 ;;
+    "builder prune --all --force") exit 0 ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$TEST_ROOT/bin/docker"
+"$NODETMP" prune "$HOME" --dry-run --no-deps --no-binaries >/dev/null
+docker_dry_calls="$(<"$TEST_ROOT/docker-calls")"
+assert_contains "system df" "$docker_dry_calls"
+[[ "$docker_dry_calls" != *"image prune"* ]] || fail "Docker dry-run pruned images"
+: >"$TEST_ROOT/docker-calls"
+"$NODETMP" prune "$HOME" --no-deps --no-binaries >/dev/null
+docker_prune_calls="$(<"$TEST_ROOT/docker-calls")"
+assert_contains "image prune --all --force" "$docker_prune_calls"
+assert_contains "builder prune --all --force" "$docker_prune_calls"
 
 echo "PASS: nodetmp regression tests"

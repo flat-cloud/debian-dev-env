@@ -21,10 +21,8 @@ apt-get update -q -y && apt-get install -q -y \
     postgresql-contrib \
     nginx
 
-# Install Python CLI tools for the user
-if [ -n "$SUDO_USER" ]; then
-    su - "$SUDO_USER" -c "python3 -m pip install --user --break-system-packages uv pipx glances rich-cli httpie llm ruff tldr copier" || true
-fi
+# Optional user-space Python tools are persistent and are installed only when
+# install.sh is explicitly run with -p. Do not reinstall them at VM startup.
 
 # Start PostgreSQL service and ensure local dev database
 service postgresql start

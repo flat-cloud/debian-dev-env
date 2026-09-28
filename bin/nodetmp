@@ -13,7 +13,7 @@ show_help() {
 Usage: nodetmp [command] [options]
 
 Commands:
-  enforce [path]    Recursively offload supported dependencies, caches, and prune
+  enforce [path]    Recursively offload dependencies, repair links, cache, and prune
   link [path]       Offload dependencies for one project
   install, i        Ensure /tmp symlinks exist, then run `npm install`
   venv              Ensure /tmp .venv exists, then create a virtualenv
@@ -21,7 +21,7 @@ Commands:
   scan [path]       Audit dependency locations without changing them
   fix, repair       Re-create missing /tmp targets for managed broken symlinks
   clean             Remove managed symlinks and temp data for the current project
-  prune [path]      Prune older standalone binaries, editor logs, and stale caches
+  prune [path]      Prune unused Docker data, dependencies, builds, and old binaries
   help              Display this help message
 
 Supported project directories:
@@ -34,6 +34,12 @@ Supported project directories:
 Options for enforce:
   --dry-run         Show what would change
   --no-caches       Do not migrate known package-manager/browser caches
+
+Options for prune:
+  --dry-run         Show filesystem changes; Docker reports usage only
+  --no-docker       Do not prune unused Docker images and build cache
+  --no-deps         Do not offload dependencies or remove orphaned temp stores
+  --no-binaries     Do not prune superseded Codex releases or NVM cache
 
 Environment:
   NODETMP_STORE_DIR Override the temp storage root (default: /tmp/dev_tmp_store/$UID)
@@ -85,9 +91,13 @@ get_project_tmp_store() {
 
 ensure_project_store() {
     local store="$1"
+    local project_path="${2:-}"
 
     mkdir -p -- "$store"
     chmod 700 -- "$STORE_ROOT" "$store" 2>/dev/null || true
+    if [[ -n "$project_path" ]]; then
+        printf '%s\n' "$project_path" >"$store/.nodetmp-project"
+    fi
 }
 
 get_project_targets() {
@@ -119,6 +129,19 @@ is_managed_target() {
 
     case "$target" in
         "$STORE_ROOT"/*|"$LEGACY_STORE_ROOT"/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Older versions and project-specific helpers used these layouts before the
+# per-user dev_tmp_store was introduced. They are safe to adopt because their
+# contents are ephemeral dependencies, unlike arbitrary user-owned symlinks.
+is_legacy_ephemeral_target() {
+    local target="$1"
+    local tmp_root="${TMPDIR:-/tmp}"
+
+    case "$target" in
+        "$tmp_root"/node_modules_store/*|"$tmp_root"/*-dependencies/*|"$tmp_root"/*_dependencies/*) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -157,7 +180,26 @@ link_directory() {
             return 0
         fi
         if ! is_managed_target "$current_target"; then
-            fail "refusing to replace unmanaged symlink: $source -> $current_target"
+            if ! is_legacy_ephemeral_target "$current_target"; then
+                fail "refusing to replace unmanaged symlink: $source -> $current_target"
+            fi
+            if [[ -e "$current_target" && ! -d "$current_target" ]]; then
+                fail "refusing to migrate non-directory legacy target: $current_target"
+            fi
+            if [[ "$DRY_RUN" == true ]]; then
+                if [[ -d "$current_target" ]]; then
+                    echo "[dry-run] Would migrate legacy link $source -> $destination"
+                else
+                    echo "[dry-run] Would replace broken legacy link $source -> $destination"
+                fi
+                return 0
+            fi
+            if [[ -d "$current_target" ]]; then
+                echo "🔄 Migrating legacy ephemeral target: $current_target"
+                copy_then_remove "$current_target" "$destination"
+            else
+                echo "🔧 Adopting broken legacy link: $source -> $destination"
+            fi
         fi
         if [[ "$DRY_RUN" == true ]]; then
             echo "[dry-run] Would recreate $source -> $destination"
@@ -214,7 +256,7 @@ do_link() {
 
     echo "🔗 Offloading project targets for $project_name to ephemeral storage..."
     if [[ "$DRY_RUN" == false ]]; then
-        ensure_project_store "$store"
+        ensure_project_store "$store" "$project_path"
     fi
 
     for target_name in "${PROJECT_TARGETS[@]}"; do
@@ -287,12 +329,16 @@ do_enforce() {
             \( -type f \( -name package.json -o -name composer.json -o -name pyproject.toml -o \
                 -name requirements.txt -o -name Pipfile -o -name uv.lock -o -name Cargo.toml -o \
                 -name next.config.js -o -name next.config.mjs -o -name next.config.ts \) \
-                -print0 \) 2>/dev/null
+                -print0 \) -o \
+            \( -type l \( -name node_modules -o -name vendor -o -name .venv -o \
+                -name target -o -name .next \) -print0 \) 2>/dev/null
     )
 
     if [[ "$include_caches" == true && "$search_path" == "$HOME" ]]; then
         do_caches
-        do_prune "$HOME"
+        # Enforcement already handled dependencies. Keep automatic boot/install
+        # enforcement from unexpectedly pruning the machine-wide Docker daemon.
+        do_prune "$HOME" --no-docker --no-deps
     fi
 
     if [[ "$DRY_RUN" == true ]]; then
@@ -382,7 +428,7 @@ restore_managed_link() {
         return 2
     fi
 
-    ensure_project_store "$store"
+    ensure_project_store "$store" "$project_path"
     mkdir -p -- "$new_target"
     rm -f -- "$link_path"
     ln -s -- "$new_target" "$link_path"
@@ -428,7 +474,7 @@ do_fix() {
         fi
     done < <(find "$search_path" -mindepth 1 -maxdepth "$SCAN_DEPTH" \
         \( -type d \( -name '.*' -o -name gopath \) -prune \) -o \
-        \( -name node_modules -o -name vendor -o -name .venv -o -name target \) \
+        \( -name node_modules -o -name vendor -o -name .venv -o -name target -o -name .next \) \
         -type l -print0 2>/dev/null)
 
     echo "✅ Restored $count target(s); skipped $skipped unmanaged link(s)."
@@ -462,9 +508,9 @@ do_scan() {
     done < <(
         find "$search_path" -xdev -mindepth 1 -maxdepth "$SCAN_DEPTH" \
             \( -type d \( -name '.*' ! -name .venv -o -name gopath \) -prune \) -o \
-            \( -type d \( -name node_modules -o -name vendor -o -name .venv -o -name target \) \
+            \( -type d \( -name node_modules -o -name vendor -o -name .venv -o -name target -o -name .next \) \
                 -print0 -prune \) -o \
-            \( -type l \( -name node_modules -o -name vendor -o -name .venv -o -name target \) \
+            \( -type l \( -name node_modules -o -name vendor -o -name .venv -o -name target -o -name .next \) \
                 -print0 \) 2>/dev/null
     )
 
@@ -501,12 +547,223 @@ do_clean() {
     fi
 }
 
+project_supports_target() {
+    local project_path="$1"
+    local target_name="$2"
+
+    case "$target_name" in
+        node_modules) [[ -f "$project_path/package.json" ]] ;;
+        vendor) [[ -f "$project_path/composer.json" ]] ;;
+        .venv) [[ -f "$project_path/pyproject.toml" || -f "$project_path/requirements.txt" || \
+            -f "$project_path/Pipfile" || -f "$project_path/uv.lock" ]] ;;
+        target) [[ -f "$project_path/Cargo.toml" ]] ;;
+        .next) [[ -f "$project_path/next.config.js" || -f "$project_path/next.config.mjs" || \
+            -f "$project_path/next.config.ts" ]] ;;
+        *) return 1 ;;
+    esac
+}
+
+prune_dependencies() {
+    local search_root="$1"
+    local target_path
+    local target_name
+    local project_path
+    local store
+    local link_path
+    local link_target
+    local relative_target
+    local store_name
+    local manifest
+    declare -A referenced_stores=()
+    PRUNE_STEP_COUNT=0
+
+    echo "📦 Offloading persistent dependency directories..."
+    while IFS= read -r -d '' target_path; do
+        project_path="$(dirname -- "$target_path")"
+        target_name="$(basename -- "$target_path")"
+        project_supports_target "$project_path" "$target_name" || continue
+        if [[ ! -w "$project_path" ]]; then
+            echo "⚠️  Skipping non-writable dependency: $target_path"
+            continue
+        fi
+        store="$(get_project_tmp_store "$(canonical_directory "$project_path")")"
+        if [[ "$DRY_RUN" == false ]]; then
+            ensure_project_store "$store" "$project_path"
+        fi
+        link_target "$project_path" "$target_name" "$store"
+        PRUNE_STEP_COUNT=$((PRUNE_STEP_COUNT + 1))
+    done < <(
+        find "$search_root" -xdev -mindepth 1 -maxdepth "$SCAN_DEPTH" \
+            \( -type d \( -name node_modules -o -name vendor -o -name .venv -o \
+                -name target -o -name .next \) -print0 -prune \) -o \
+            \( -type d \( -name '.*' -o -name gopath \) -prune \) 2>/dev/null
+    )
+
+    # Mark stores referenced by managed project links.
+    while IFS= read -r -d '' link_path; do
+        link_target="$(readlink -- "$link_path")"
+        case "$link_target" in
+            "$STORE_ROOT"/*/*)
+                relative_target="${link_target#"$STORE_ROOT"/}"
+                store_name="${relative_target%%/*}"
+                referenced_stores["$STORE_ROOT/$store_name"]=1
+                if [[ "$DRY_RUN" == false && -d "$STORE_ROOT/$store_name" ]]; then
+                    printf '%s\n' "$(dirname -- "$link_path")" \
+                        >"$STORE_ROOT/$store_name/.nodetmp-project"
+                fi
+                ;;
+        esac
+    done < <(
+        find "$search_root" -xdev -mindepth 1 -maxdepth "$SCAN_DEPTH" \
+            \( -type d \( -name .git -o -name node_modules -o -name vendor -o \
+                -name .venv -o -name target -o -name .next \) -prune \) -o \
+            \( -type l \( -name node_modules -o -name vendor -o -name .venv -o \
+                -name target -o -name .next \) -print0 \) 2>/dev/null
+    )
+
+    # Also protect the deterministic store for every existing project. This
+    # keeps dry-run output accurate before a real dependency has been offloaded.
+    while IFS= read -r -d '' manifest; do
+        project_path="$(dirname -- "$manifest")"
+        store="$(get_project_tmp_store "$(canonical_directory "$project_path")")"
+        referenced_stores["$store"]=1
+    done < <(
+        find "$search_root" -xdev -mindepth 1 -maxdepth "$SCAN_DEPTH" \
+            \( -type d \( -name '.*' -o -name node_modules -o -name vendor -o \
+                -name .venv -o -name target -o -name gopath \) -prune \) -o \
+            \( -type f \( -name package.json -o -name composer.json -o -name pyproject.toml -o \
+                -name requirements.txt -o -name Pipfile -o -name uv.lock -o -name Cargo.toml -o \
+                -name next.config.js -o -name next.config.mjs -o -name next.config.ts \) \
+                -print0 \) 2>/dev/null
+    )
+
+    # The store is per-user but can serve several projects. Only a home-wide
+    # prune has enough visibility to safely classify an immediate child orphan.
+    if [[ "$search_root" == "$HOME" && -d "$STORE_ROOT" ]]; then
+        echo "🧹 Removing unreferenced temporary dependency stores..."
+        while IFS= read -r -d '' store; do
+            local marker="$store/.nodetmp-project"
+            local recorded_project
+            local recorded_target
+            [[ "$(basename -- "$store")" == cache ]] && continue
+            [[ -n "${referenced_stores[$store]+present}" ]] && continue
+            # Untagged stores may belong to projects outside the search root
+            # and predate ownership markers. Preserve them conservatively.
+            [[ -f "$marker" ]] || continue
+            IFS= read -r recorded_project <"$marker" || recorded_project=""
+            if [[ -d "$recorded_project" ]]; then
+                for target_name in node_modules vendor .venv target .next; do
+                    link_path="$recorded_project/$target_name"
+                    [[ -L "$link_path" ]] || continue
+                    recorded_target="$(readlink -- "$link_path")"
+                    if [[ "$recorded_target" == "$store"/* ]]; then
+                        referenced_stores["$store"]=1
+                        break
+                    fi
+                done
+            fi
+            [[ -n "${referenced_stores[$store]+present}" ]] && continue
+            if [[ "$DRY_RUN" == true ]]; then
+                echo "[dry-run] Would remove orphaned dependency store: $store"
+            else
+                rm -rf -- "$store"
+                echo "🧹 Removed orphaned dependency store: $store"
+            fi
+            PRUNE_STEP_COUNT=$((PRUNE_STEP_COUNT + 1))
+        done < <(find "$STORE_ROOT" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+    fi
+}
+
+prune_versioned_binaries() {
+    local search_root="$1"
+    local packages_root="$search_root/.codex/packages"
+    local package_dir
+    local releases_dir
+    local current_target
+    local release
+    local nvm_cache="$search_root/.nvm/.cache"
+    PRUNE_STEP_COUNT=0
+
+    # Every Codex package channel has its own releases/ and current symlink.
+    # Discover them rather than special-casing only the standalone CLI.
+    if [[ -d "$packages_root" ]]; then
+        while IFS= read -r -d '' package_dir; do
+            releases_dir="$package_dir/releases"
+            [[ -d "$releases_dir" ]] || continue
+            current_target="$(readlink -f -- "$package_dir/current" 2>/dev/null || true)"
+            if [[ -z "$current_target" || ! -d "$current_target" || \
+                  "$current_target" != "$releases_dir"/* ]]; then
+                echo "⚠️  Skipping versioned package with no valid current release: $package_dir"
+                continue
+            fi
+            while IFS= read -r -d '' release; do
+                [[ "$release" == "$current_target" ]] && continue
+                if [[ "$DRY_RUN" == true ]]; then
+                    echo "[dry-run] Would remove superseded $(basename -- "$package_dir") release: $release"
+                else
+                    rm -rf -- "$release"
+                    echo "🧹 Removed superseded $(basename -- "$package_dir") release: $(basename -- "$release")"
+                fi
+                PRUNE_STEP_COUNT=$((PRUNE_STEP_COUNT + 1))
+            done < <(find "$releases_dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+        done < <(find "$packages_root" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+    fi
+
+    # NVM keeps downloaded archives after installation. Installed Node versions
+    # remain untouched; only the reproducible download cache is removed.
+    if [[ -d "$nvm_cache" ]]; then
+        if [[ "$DRY_RUN" == true ]]; then
+            echo "[dry-run] Would remove NVM download cache: $nvm_cache"
+        else
+            rm -rf -- "$nvm_cache"
+            echo "🧹 Removed NVM download cache: $nvm_cache"
+        fi
+        PRUNE_STEP_COUNT=$((PRUNE_STEP_COUNT + 1))
+    fi
+}
+
+prune_docker() {
+    local -a docker_command=(docker)
+    PRUNE_STEP_COUNT=0
+
+    command -v docker >/dev/null 2>&1 || return 0
+    if ! docker info >/dev/null 2>&1; then
+        if command -v sudo >/dev/null 2>&1 && sudo -n docker info >/dev/null 2>&1; then
+            docker_command=(sudo -n docker)
+        else
+            echo "⚠️  Skipping Docker prune; the daemon is not accessible."
+            return 0
+        fi
+    fi
+
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "[dry-run] Would prune all Docker images unused by containers and all build cache."
+        "${docker_command[@]}" system df 2>/dev/null || true
+        return 0
+    fi
+
+    echo "🐳 Pruning Docker images unused by containers..."
+    if "${docker_command[@]}" image prune --all --force; then
+        PRUNE_STEP_COUNT=$((PRUNE_STEP_COUNT + 1))
+    else
+        echo "⚠️  Docker image prune failed; continuing with local cleanup." >&2
+    fi
+    echo "🐳 Pruning Docker build cache..."
+    if "${docker_command[@]}" builder prune --all --force; then
+        PRUNE_STEP_COUNT=$((PRUNE_STEP_COUNT + 1))
+    else
+        echo "⚠️  Docker builder prune failed; continuing with local cleanup." >&2
+    fi
+}
+
 # Prune items that grow unboundedly on persistent $HOME storage but are safe to
-# delete: old standalone binary releases, editor/IDE log directories, stale
-# zcompdump files from previous Cloud Shell hostnames, and any dev_tmp_store
-# directory that leaked onto persistent storage instead of /tmp.
+# delete or offload: unused Docker data, project dependencies, superseded binary
+# releases, editor logs, stale shell caches, leaked stores, and ignored builds.
 do_prune() {
     local search_root="$HOME"
+    local include_docker=true
+    local include_dependencies=true
+    local include_binaries=true
     local freed=0
     local path
     local argument
@@ -514,32 +771,38 @@ do_prune() {
     for argument in "$@"; do
         case "$argument" in
             --dry-run) DRY_RUN=true ;;
+            --no-docker) include_docker=false ;;
+            --no-deps) include_dependencies=false ;;
+            --no-binaries) include_binaries=false ;;
             -*) fail "unknown prune option: $argument"; return 1 ;;
             *) search_root="$argument" ;;
         esac
     done
 
+    search_root="$(canonical_directory "$search_root")"
+
     echo "✂️  Pruning stale data under $search_root..."
 
-    # 1. Old Codex standalone releases (keep only 'current').
-    local standalone_dir="$search_root/.codex/packages/standalone/releases"
-    local current_link="$search_root/.codex/packages/standalone/current"
-    if [[ -d "$standalone_dir" ]]; then
-        local current_target
-        current_target="$(readlink -- "$current_link" 2>/dev/null || true)"
-        while IFS= read -r -d '' path; do
-            [[ "$path" == "$current_target" ]] && continue
-            if [[ "$DRY_RUN" == true ]]; then
-                echo "[dry-run] Would remove old Codex release: $path"
-            else
-                rm -rf -- "$path"
-                echo "🧹 Removed old Codex release: $(basename -- "$path")"
-                freed=$((freed + 1))
-            fi
-        done < <(find "$standalone_dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+    # 1. Superseded versioned binaries and reproducible runtime archives.
+    if [[ "$include_binaries" == true ]]; then
+        prune_versioned_binaries "$search_root"
+        freed=$((freed + PRUNE_STEP_COUNT))
     fi
 
-    # 2. CodeOSS / VS Code IDE log directory (regenerated each session).
+    # 2. Persistent dependencies are offloaded; unreferenced temp stores are
+    # removed only when the entire home tree is in scope.
+    if [[ "$include_dependencies" == true ]]; then
+        prune_dependencies "$search_root"
+        freed=$((freed + PRUNE_STEP_COUNT))
+    fi
+
+    # 3. Docker is machine-wide, so run it only for the default home-wide prune.
+    if [[ "$include_docker" == true && "$search_root" == "$HOME" ]]; then
+        prune_docker
+        freed=$((freed + PRUNE_STEP_COUNT))
+    fi
+
+    # 4. CodeOSS / VS Code IDE log directory (regenerated each session).
     local editor_logs="$search_root/.codeoss/data/logs"
     if [[ -d "$editor_logs" ]]; then
         if [[ "$DRY_RUN" == true ]]; then
@@ -551,7 +814,7 @@ do_prune() {
         fi
     fi
 
-    # 3. Stale zcompdump files from previous Cloud Shell hostnames.
+    # 5. Stale zcompdump files from previous Cloud Shell hostnames.
     #    Pattern: ~/.zcompdump-<hostname>-* (hostname differs from current host).
     local current_host
     current_host="$(hostname 2>/dev/null || true)"
@@ -569,7 +832,7 @@ do_prune() {
         fi
     done < <(find "$search_root" -maxdepth 1 -name '.zcompdump-*' -print0 2>/dev/null)
 
-    # 4. dev_tmp_store leaked onto persistent $HOME (should live in /tmp).
+    # 6. dev_tmp_store leaked onto persistent $HOME (should live in /tmp).
     #    Only remove if it is NOT the configured STORE_ROOT.
     local leaked_store="$search_root/tmp/dev_tmp_store"
     if [[ -d "$leaked_store" && "$leaked_store" != "$STORE_ROOT" ]]; then
@@ -583,6 +846,34 @@ do_prune() {
             freed=$((freed + 1))
         fi
     fi
+
+    # 7. Reproducible dist output, but only when the owning Git repository says
+    #    it is ignored. This avoids deleting tracked release artifacts or an
+    #    unrelated directory that merely happens to be named dist.
+    local repo_root
+    local relative_path
+    while IFS= read -r -d '' path; do
+        repo_root="$(git -C "$path" rev-parse --show-toplevel 2>/dev/null || true)"
+        [[ -n "$repo_root" && "$path" == "$repo_root"/* ]] || continue
+        relative_path="${path#"$repo_root"/}"
+        if ! git -C "$repo_root" check-ignore -q -- "$relative_path"; then
+            continue
+        fi
+        if [[ "$DRY_RUN" == true ]]; then
+            echo "[dry-run] Would remove ignored dist build output: $path"
+        else
+            rm -rf -- "$path"
+            echo "🧹 Removed ignored dist build output: $path"
+            freed=$((freed + 1))
+        fi
+    done < <(
+        if command -v git >/dev/null 2>&1; then
+            find "$search_root" -xdev -mindepth 1 -maxdepth "$SCAN_DEPTH" \
+                \( -type d \( -name '.*' -o -name node_modules -o -name vendor -o \
+                    -name .venv -o -name target -o -name gopath \) -prune \) -o \
+                \( -type d -name dist -print0 -prune \) 2>/dev/null
+        fi
+    )
 
     if [[ "$DRY_RUN" == true ]]; then
         echo "✅ Dry-run prune complete."
